@@ -1,0 +1,17 @@
+/* Import individual theme files */
+@import './themes/vercel.css';
+
+body {
+  @apply overscroll-none;
+}
+
+:root {
+  --header-height: calc(var(--spacing, 0.25rem) * 12 + 1px);
+}
+
+[data-theme] body {
+  --font-sans: initial;
+  --font-mono: initial;
+  --font-serif: initial;
+  font-family: var(--font-sans);
+}
