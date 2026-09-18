@@ -31,8 +31,10 @@ import {
   IconDeviceLaptop,
   IconDots,
   IconDotsVertical,
+  IconDownload,
   IconEdit,
   IconExternalLink,
+  IconEye,
   IconEyeOff,
   IconFile,
   IconFileText,
@@ -61,6 +63,7 @@ import {
   IconPhone,
   IconPhoto,
   IconPizza,
+  IconPlayerStop,
   IconPlus,
   IconProps,
   IconRosetteDiscountCheck,
@@ -148,6 +151,7 @@ export const Icons = {
   phone: IconPhone,
   video: IconVideo,
   send: IconSend,
+  stop: IconPlayerStop,
   paperclip: IconPaperclip,
 
   // Files
@@ -163,6 +167,7 @@ export const Icons = {
   // Actions
   add: IconPlus,
   edit: IconEdit,
+  download: IconDownload,
   upload: IconUpload,
   share: IconShare,
   login: IconLogin,
@@ -196,6 +201,7 @@ export const Icons = {
   // Data / Charts
   trendingDown: IconTrendingDown,
   trendingUp: IconTrendingUp,
+  eye: IconEye,
   eyeOff: IconEyeOff,
   adjustments: IconAdjustmentsHorizontal,
 

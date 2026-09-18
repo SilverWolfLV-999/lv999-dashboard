@@ -2,6 +2,11 @@
 
 @import 'tw-animate-css';
 
+@import 'streamdown/styles.css';
+
+/* Streamdown 使用 Tailwind 工具类，告知 Tailwind 扫描其产物文件 */
+@source '../../node_modules/streamdown/dist/*.js';
+
 @custom-variant dark (&:is(.dark *));
 
 /* Base UI exposes orientation as data-orientation="…"; the base-nova

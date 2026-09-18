@@ -23,8 +23,7 @@
         "uriFormat": "%s",
         "action": "debugWithChrome"
       },
-      "env": {
-      }
+      "env": {}
     }
   ]
 }
