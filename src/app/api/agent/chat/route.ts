@@ -149,6 +149,10 @@ export async function POST(request: Request) {
     stream: toUIMessageStream({
       stream: result.stream,
       originalMessages: messages as AgentUIMessage[],
+      // 官方要求（持久化场景必须提供响应消息 id 生成器，resume 官方示例同款写法）：
+      // 不提供时响应消息 id 为空串，空 id 会在 messages 主键上跨会话冲突，
+      // 导致 onConflictDoUpdate 覆盖其他会话的内容（历史事故：串会话 + 消息丢失）
+      generateMessageId: generateId,
       // 把本轮流 id 随响应消息的 metadata 下发（客户端停止时据此携带最新流 id）
       messageMetadata: ({ part }) => (part.type === 'start' ? { streamId } : undefined),
       onEnd: async ({ messages: finalMessages }) => {

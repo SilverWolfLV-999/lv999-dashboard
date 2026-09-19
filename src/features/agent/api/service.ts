@@ -286,9 +286,16 @@ export async function syncConversationMessages(
   const db = getDb();
   if (finalMessages.length === 0) return;
 
+  // 防线：空 id 消息会在 messages 主键上跨会话冲突（历史事故根因之一），跳过并告警
+  const safeFinalMessages = finalMessages.filter((message) => message.id.length > 0);
+  if (safeFinalMessages.length !== finalMessages.length) {
+    console.error('[agent] detected messages with empty id, skipped persistence');
+  }
+  if (safeFinalMessages.length === 0) return;
+
   const originalIds = new Set(originalMessages.map((message) => message.id));
-  const existingMessages = finalMessages.filter((message) => originalIds.has(message.id));
-  const ownedMessages = finalMessages.filter((message) => !originalIds.has(message.id));
+  const existingMessages = safeFinalMessages.filter((message) => originalIds.has(message.id));
+  const ownedMessages = safeFinalMessages.filter((message) => !originalIds.has(message.id));
 
   if (existingMessages.length > 0) {
     await db
