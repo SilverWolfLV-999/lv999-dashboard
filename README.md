@@ -49,10 +49,6 @@ LV999 Dashboard 基于开源项目 [Kiranism/next-shadcn-dashboard-starter](http
 | 路由 | 说明 |
 | --- | --- |
 | `/dashboard/overview` | 总览：统计卡片 + 图表（并行路由独立加载） |
-| `/dashboard/product` | 产品列表：全功能数据表格（React Query + nuqs） |
-| `/dashboard/product/new` | 新建产品：TanStack Form + Zod + `useMutation` |
-| `/dashboard/product/[productId]` | 产品详情 / 编辑：SSR 预取 + 水合 |
-| `/dashboard/users` | 用户列表：同一套 DataTable 模式，抽屉式新建表单 |
 | `/dashboard/workspaces` | 工作区管理：Clerk `<OrganizationList />` |
 | `/dashboard/workspaces/team` | 团队管理：Clerk `<OrganizationProfile />`（需激活组织） |
 | `/dashboard/profile` | 个人资料与安全设置（Clerk 账户管理） |
@@ -106,11 +102,9 @@ src/
 │   ├── auth/               # 登录 / 注册页
 │   ├── dashboard/          # 后台路由
 │   │   ├── overview/       # 总览（并行路由：@area_stats、@bar_stats、@pie_stats、@sales）
-│   │   ├── product/        # 产品管理（列表 / 新建 / 详情）
-│   │   ├── users/          # 用户管理
 │   │   ├── workspaces/     # 工作区与团队
 │   │   └── profile/        # 个人资料
-│   └── api/                # Route Handlers（mock 实现，可接真实后端）
+│   └── api/                # Route Handlers（如 Agent 模块后端接口）
 ├── components/
 │   ├── ui/                 # shadcn/ui 组件库
 │   ├── layout/             # 布局（侧边栏、顶栏、Infobar 等）

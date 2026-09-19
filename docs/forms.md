@@ -186,7 +186,7 @@ typechecking stays fast at 40+ fields.
 ## Template-specific notes
 
 **Submitting with React Query.** `onSubmit` awaits the mutation; success/error
-handling lives on the mutation (see `features/products/components/product-form.tsx`):
+handling lives on the mutation:
 
 ```tsx
 onSubmit: async ({ value }) => {
@@ -195,13 +195,12 @@ onSubmit: async ({ value }) => {
 ```
 
 **Sheet / Dialog forms.** The submit button lives in the footer, outside the
-`<form>` element, connected via the HTML `form` attribute
-(`features/users/components/user-form-sheet.tsx`):
+`<form>` element, connected via the HTML `form` attribute:
 
 ```tsx
-<form id='user-form-sheet' onSubmit={…}>…</form>
+<form id='sheet-form' onSubmit={…}>…</form>
 <SheetFooter>
-  <Button type='submit' form='user-form-sheet'>Save</Button>
+  <Button type='submit' form='sheet-form'>Save</Button>
 </SheetFooter>
 ```
 

@@ -82,7 +82,6 @@ The project follows a feature-based folder structure designed for scalability in
 │   ├── auth/              # Authentication routes (sign-in, sign-up)
 │   ├── dashboard/         # Dashboard routes
 │   │   ├── overview/      # Parallel routes (@area_stats, @bar_stats, etc.)
-│   │   ├── product/       # Product management pages
 │   │   ├── workspaces/    # Organization management
 │   │   └── profile/       # User profile
 │   ├── api/               # API routes (if any)
@@ -103,17 +102,6 @@ The project follows a feature-based folder structure designed for scalability in
 ├── features/              # Feature-based modules
 │   ├── auth/              # Authentication components
 │   ├── overview/          # Dashboard analytics
-│   ├── products/          # Product management (React Query + nuqs)
-│   │   ├── api/
-│   │   │   ├── types.ts   # Type contract (response shapes, filters, payloads)
-│   │   │   ├── service.ts # Data access layer (swap for your backend)
-│   │   │   └── queries.ts # React Query options + key factories
-│   │   ├── components/    # Listing, form, table components
-│   │   ├── schemas/       # Zod schemas
-│   │   └── constants/     # Filter options
-│   ├── users/             # User management (React Query + nuqs)
-│   │   ├── api/           # Same pattern: types.ts → service.ts → queries.ts
-│   │   └── components/    # Listing, table components
 │   └── profile/           # Profile management
 │
 ├── config/                # Configuration files

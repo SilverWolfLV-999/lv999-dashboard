@@ -368,7 +368,7 @@ export const CellAction: React.FC<{ data: Order }> = ({ data }) => {
 };
 ```
 
-For **sheet-based editing** (like Users), replace `router.push` with opening a `<FormSheet>` — see the Forms section below.
+For **sheet-based editing**, replace `router.push` with opening a `<FormSheet>` — see the Forms section below.
 
 ### Step 5: Page Route (`src/app/dashboard/<name>/page.tsx`)
 
@@ -476,7 +476,7 @@ The full pattern is shown in Steps 1-4 above. The key structure:
 
 ### Sheet Form (Inline create/edit in a side panel)
 
-For features where a separate page is overkill (like Users). The sheet manages open state; the form uses a `form` attribute to connect to the sheet footer's submit button.
+For features where a separate page is overkill. The sheet manages open state; the form uses a `form` attribute to connect to the sheet footer's submit button.
 
 ```tsx
 'use client';
