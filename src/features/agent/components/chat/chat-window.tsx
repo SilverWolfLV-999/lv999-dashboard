@@ -3,7 +3,7 @@
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
@@ -41,11 +41,24 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   const createConversation = useMutation(createConversationMutation);
   const updateConversation = useMutation(updateConversationMutation);
 
-  const { messages, sendMessage, status, stop, error, regenerate } = useChat({
+  const { messages, sendMessage, status, stop, error, regenerate, setMessages } = useChat({
     chat: entry.chat
   });
 
   const isGenerating = status === 'submitted' || status === 'streaming';
+
+  // 停止生成后，服务端仍会把这次生成跑完并落库完整版本。
+  // 若用户紧接着发下一条消息，需要剔除本地未完成的助手消息（与完整版本同 id），
+  // 否则它的部分内容会覆盖服务端已落库的完整消息。
+  const stoppedMessageIdRef = useRef<string | null>(null);
+
+  const handleStop = () => {
+    const last = messages.at(-1);
+    if (last?.role === 'assistant') {
+      stoppedMessageIdRef.current = last.id;
+    }
+    stop();
+  };
 
   const handleSubmit = async () => {
     const text = input.trim();
@@ -63,6 +76,11 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
       }
     }
 
+    if (stoppedMessageIdRef.current) {
+      const stoppedId = stoppedMessageIdRef.current;
+      stoppedMessageIdRef.current = null;
+      setMessages((prev) => prev.filter((message) => message.id !== stoppedId));
+    }
     setInput('');
     void sendMessage({ text });
   };
@@ -113,7 +131,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
         onSubmit={() => {
           void handleSubmit();
         }}
-        onStop={stop}
+        onStop={handleStop}
         isGenerating={isGenerating}
         model={model}
         onModelChange={handleModelChange}

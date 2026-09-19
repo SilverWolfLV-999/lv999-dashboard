@@ -1,5 +1,11 @@
 import { auth } from '@clerk/nextjs/server';
-import { createAgentUIStreamResponse, type InferAgentUIMessage, type UIMessage } from 'ai';
+import {
+  convertToModelMessages,
+  createUIMessageStreamResponse,
+  toUIMessageStream,
+  type InferAgentUIMessage,
+  type UIMessage
+} from 'ai';
 import { buildAgent } from '@/features/agent/api/agent';
 import {
   applyAutoTitle,
@@ -43,7 +49,7 @@ export async function POST(request: Request) {
     return new Response('Conversation not found', { status: 404 });
   }
 
-  // 请求开始先落用户消息（中断场景不丢输入），并使用首条消息生成会话标题
+  // 请求开始先落用户消息（异常场景不丢输入），并使用首条消息生成会话标题
   const lastUserMessage = messages.toReversed().find((message) => message.role === 'user');
   if (lastUserMessage) {
     await saveUserMessage(conversationId, lastUserMessage);
@@ -56,19 +62,31 @@ export async function POST(request: Request) {
   const agent = buildAgent({ userId, conversationId, modelKey: conversation.model });
   type AgentUIMessage = InferAgentUIMessage<typeof agent>;
 
-  return createAgentUIStreamResponse({
-    agent,
-    uiMessages: messages,
-    originalMessages: messages as AgentUIMessage[],
-    // 点停止/刷新页面 = 客户端断开 = 真正中止生成（onEnd 按 isAborted 尽力落库）；
-    // 切换会话不触发 abort（chat-store 中的实例继续消费流，后台生成完并完整落库）
-    abortSignal: request.signal,
-    onEnd: async ({ messages: finalMessages, isAborted }) => {
-      await syncConversationMessages(conversationId, finalMessages);
-      await touchConversation(conversationId);
-      if (isAborted) {
-        console.warn(`[agent] stream aborted for conversation ${conversationId}`);
-      }
+  const result = await agent.stream({
+    messages: await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true })
+  });
+
+  // 关键：不 await。即使用户刷新/关闭页面导致连接断开，服务端也把流消费到生成结束，
+  // 保证 onEnd 一定触发、助手消息（含产物工具调用）完整落库。
+  // 语义说明：断开 ≠ 中止；真正的"取消生成"需要 run 级取消信令，暂不实现
+  // （当前由 maxDuration 300s 与 agent 240s 超时兜底成本）。
+  result.consumeStream({
+    onError: (error) => {
+      console.error(`[agent] background stream error for conversation ${conversationId}:`, error);
     }
+  });
+
+  return createUIMessageStreamResponse({
+    stream: toUIMessageStream({
+      stream: result.stream,
+      originalMessages: messages as AgentUIMessage[],
+      onEnd: async ({ messages: finalMessages, isAborted }) => {
+        await syncConversationMessages(conversationId, finalMessages);
+        await touchConversation(conversationId);
+        if (isAborted) {
+          console.warn(`[agent] stream aborted for conversation ${conversationId}`);
+        }
+      }
+    })
   });
 }

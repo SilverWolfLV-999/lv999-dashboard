@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import { and, asc, count, desc, eq, ilike, inArray, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { artifacts, conversations, messages } from '@/lib/db/schema';
 import { DEFAULT_CONVERSATION_TITLE, buildConversationTitle } from '../constants/conversation';
@@ -195,24 +195,22 @@ export async function saveUserMessage(
 }
 
 /**
- * 流结束后按客户端完整消息列表做一次同步：
- * 删除已不在列表中的旧消息（如 regenerate 产生的旧回复），并 upsert 全部消息。
+ * 流结束后落库（单调写入）：
+ * - 只做幂等 upsert，绝不删除任何"不在列表中的消息"。
+ *   历史教训：此前的"删除其余消息"策略在并发场景下会误删数据——
+ *   刷新后重建的实例从旧快照发出新请求时，迟到/陈旧的 onEnd 会用旧列表
+ *   把其他请求刚写入的消息删除。
  */
 export async function syncConversationMessages(
   conversationId: string,
   uiMessages: PersistedUIMessage[]
 ): Promise<void> {
   const db = getDb();
-  const ids = uiMessages.map((message) => message.id);
-  if (ids.length > 0) {
-    await db
-      .delete(messages)
-      .where(and(eq(messages.conversationId, conversationId), notInArray(messages.id, ids)));
-    await db
-      .insert(messages)
-      .values(uiMessages.map((message) => toMessageRow(conversationId, message)))
-      .onConflictDoUpdate({ target: messages.id, set: messageUpsertSet });
-  }
+  if (uiMessages.length === 0) return;
+  await db
+    .insert(messages)
+    .values(uiMessages.map((message) => toMessageRow(conversationId, message)))
+    .onConflictDoUpdate({ target: messages.id, set: messageUpsertSet });
 }
 
 // ---------------------------------------------------------------------------
