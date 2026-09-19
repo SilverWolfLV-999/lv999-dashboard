@@ -6,7 +6,7 @@ function PageSkeleton() {
   return (
     <div
       role='status'
-      aria-label='Loading page'
+      aria-label='页面加载中'
       className='flex flex-1 animate-pulse flex-col gap-4 p-4 md:px-6'
     >
       <div className='flex items-center justify-between'>
@@ -44,9 +44,7 @@ export default function PageContainer({
     return (
       <div role='status' className='flex flex-1 items-center justify-center p-4 md:px-6'>
         {accessFallback ?? (
-          <div className='text-muted-foreground text-center text-lg'>
-            You do not have access to this page.
-          </div>
+          <div className='text-muted-foreground text-center text-lg'>你没有权限访问此页面。</div>
         )}
       </div>
     );

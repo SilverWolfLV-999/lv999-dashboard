@@ -35,10 +35,10 @@ import { NavGroup } from '@/types';
  */
 export const navGroups: NavGroup[] = [
   {
-    label: 'Overview',
+    label: '概览',
     items: [
       {
-        title: 'Dashboard',
+        title: '仪表盘',
         url: '/dashboard/overview',
         icon: 'dashboard',
         isActive: false,
@@ -46,14 +46,14 @@ export const navGroups: NavGroup[] = [
         items: []
       },
       {
-        title: 'Workspaces',
+        title: '工作区',
         url: '/dashboard/workspaces',
         icon: 'workspace',
         isActive: false,
         items: []
       },
       {
-        title: 'Teams',
+        title: '团队',
         url: '/dashboard/workspaces/team',
         icon: 'teams',
         isActive: false,
@@ -82,19 +82,19 @@ export const navGroups: NavGroup[] = [
     label: '',
     items: [
       {
-        title: 'Account',
+        title: '账户',
         url: '#',
         icon: 'account',
         isActive: true,
         items: [
           {
-            title: 'Profile',
+            title: '个人资料',
             url: '/dashboard/profile',
             icon: 'profile',
             shortcut: ['m', 'm']
           },
           {
-            title: 'Login',
+            title: '登录',
             shortcut: ['l', 'l'],
             url: '/',
             icon: 'login'

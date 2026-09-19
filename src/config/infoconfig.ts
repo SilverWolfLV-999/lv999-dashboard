@@ -1,49 +1,49 @@
 import type { InfobarContent } from '@/components/ui/infobar';
 
 export const workspacesInfoContent: InfobarContent = {
-  title: 'Workspaces Management',
+  title: '工作区管理',
   sections: [
     {
-      title: 'Overview',
+      title: '概览',
       description:
-        'The Workspaces page allows you to manage your workspaces and switch between them. This feature is powered by Clerk Organizations, which enables multi-tenant workspace management. You can view all available workspaces, create new ones, and switch your active workspace.',
+        '工作区页面用于管理并切换工作区。该功能由 Clerk Organizations 驱动，支持多租户工作区管理。你可以查看全部工作区、创建新工作区，并切换当前活动工作区。',
       links: [
         {
-          title: 'Clerk Organizations Documentation',
+          title: 'Clerk Organizations 文档',
           url: 'https://clerk.com/docs/organizations/overview'
         }
       ]
     },
     {
-      title: 'Creating Workspaces',
+      title: '创建工作区',
       description:
-        'To create a new workspace, click the "Create Organization" button. You will be prompted to enter a workspace name and configure initial settings. Once created, you can switch to the new workspace and start managing it.',
+        '要创建工作区，请点击「Create Organization」按钮，输入工作区名称并完成初始设置。创建完成后即可切换到新工作区并进行管理。',
       links: [
         {
-          title: 'Multi-tenant Authentication Guide',
+          title: '多租户认证指南',
           url: 'https://clerk.com/blog/how-to-build-multitenant-authentication-with-clerk'
         }
       ]
     },
     {
-      title: 'Switching Workspaces',
+      title: '切换工作区',
       description:
-        'You can switch between workspaces by clicking on a workspace in the list. The selected workspace becomes your active organization context, and all organization-specific features will use this workspace.',
+        '点击列表中的工作区即可完成切换。选中的工作区将成为你的活动组织上下文，所有组织相关功能都会使用该工作区。',
       links: []
     },
     {
-      title: 'Workspace Features',
+      title: '工作区特性',
       description:
-        'Each workspace operates independently with its own team members, roles, permissions, and billing. This allows you to manage multiple projects or teams within a single account while keeping their data and settings separate.',
+        '每个工作区独立运行，拥有各自的团队成员、角色、权限与计费。你可以在同一账号下管理多个项目或团队，同时保持数据与设置相互隔离。',
       links: []
     },
     {
-      title: 'Server-Side Permission Checks',
+      title: '服务端权限校验',
       description:
-        "This application follows Clerk's recommended patterns for multi-tenant authentication. Server-side permission checks ensure that users can only access resources for their active organization.",
+        '本应用遵循 Clerk 推荐的多租户认证模式。服务端权限校验确保用户只能访问其活动组织下的资源。',
       links: [
         {
-          title: 'Clerk Organizations Documentation',
+          title: 'Clerk Organizations 文档',
           url: 'https://clerk.com/docs/organizations/overview'
         }
       ]
@@ -52,52 +52,52 @@ export const workspacesInfoContent: InfobarContent = {
 };
 
 export const teamInfoContent: InfobarContent = {
-  title: 'Team Management',
+  title: '团队管理',
   sections: [
     {
-      title: 'Overview',
+      title: '概览',
       description:
-        "The Team Management page allows you to manage your workspace team, including members, roles, security settings, and more. This page provides comprehensive organization management through Clerk's OrganizationProfile component.",
+        '团队管理页面用于管理团队成员、角色与安全设置等，基于 Clerk 的 OrganizationProfile 组件提供完整的组织管理能力。',
       links: [
         {
-          title: 'Clerk Organizations Documentation',
+          title: 'Clerk Organizations 文档',
           url: 'https://clerk.com/docs/organizations/overview'
         }
       ]
     },
     {
-      title: 'Managing Team Members',
+      title: '管理团队成员',
       description:
-        'You can add, remove, and manage team members from this page. Invite new members by email, assign roles, and control their access levels. Each member can have different permissions based on their role.',
+        '你可以在此页面添加、移除和管理团队成员：通过邮箱邀请新成员、分配角色并控制其访问级别。每个成员可根据所持角色拥有不同的权限。',
       links: []
     },
     {
-      title: 'Roles and Permissions',
+      title: '角色与权限',
       description:
-        'Configure default roles and permissions in the Clerk Dashboard under Organizations settings. Roles define what actions team members can perform within the workspace. Common roles include admin, member, and custom roles you define.',
+        '在 Clerk Dashboard 的 Organizations 设置中配置默认角色与权限。角色决定团队成员在工作区内可以执行的操作，常见角色包括 admin、member 以及你自定义的角色。',
       links: [
         {
-          title: 'Clerk Organizations Documentation',
+          title: 'Clerk Organizations 文档',
           url: 'https://clerk.com/docs/organizations/overview'
         }
       ]
     },
     {
-      title: 'Security Settings',
+      title: '安全设置',
       description:
-        "Manage security settings for your workspace, including authentication requirements, session management, and access controls. These settings help protect your organization's data and resources.",
+        '管理组织的安全设置，包括认证要求、会话管理与访问控制，帮助保护组织的数据与资源。',
       links: []
     },
     {
-      title: 'Organization Settings',
+      title: '组织设置',
       description:
-        'Configure general organization settings such as name, logo, and other workspace preferences. These settings apply to the entire workspace and affect all team members.',
+        '配置名称、Logo 以及工作区偏好等常规组织设置。这些设置作用于整个工作区，影响所有团队成员。',
       links: []
     },
     {
-      title: 'Navigation RBAC System',
+      title: '导航 RBAC 系统',
       description:
-        'The application includes a fully client-side navigation filtering system using the `useNav` hook. It supports `requireOrg`, `permission`, and `role` checks for instant access control. Navigation items are configured in `src/config/nav-config.ts` with `access` properties.',
+        '本应用包含基于 `useNav` hook 的纯客户端导航过滤系统，支持 `requireOrg`、`permission` 与 `role` 检查，实现即时访问控制。导航项在 `src/config/nav-config.ts` 中通过 `access` 属性配置。',
       links: []
     }
   ]

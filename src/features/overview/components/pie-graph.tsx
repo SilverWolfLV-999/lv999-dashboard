@@ -22,7 +22,7 @@ const chartData = [
 
 const chartConfig = {
   visitors: {
-    label: 'Visitors'
+    label: '访客'
   },
   chrome: {
     label: 'Chrome',
@@ -41,7 +41,7 @@ const chartConfig = {
     color: 'var(--chart-4)'
   },
   other: {
-    label: 'Other',
+    label: '其他',
     color: 'var(--chart-5)'
   }
 } satisfies ChartConfig;
@@ -51,13 +51,13 @@ export function PieGraph() {
     <Card className='flex h-full flex-col'>
       <CardHeader className='items-center pb-0'>
         <CardTitle>
-          Pie Chart
+          饼图
           <Badge variant='outline'>
             <Icons.trendingUp />
             +5.2%
           </Badge>
         </CardTitle>
-        <CardDescription>January - June 2024</CardDescription>
+        <CardDescription>2024 年 1 月 - 6 月</CardDescription>
       </CardHeader>
       <CardContent className='flex flex-1 items-center justify-center pb-0'>
         <ChartContainer

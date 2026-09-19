@@ -4,8 +4,8 @@ import { Metadata } from 'next';
 import { InteractiveGridPattern } from './interactive-grid';
 
 export const metadata: Metadata = {
-  title: 'Authentication',
-  description: 'Authentication forms built using the components.'
+  title: '身份认证',
+  description: '使用组件构建的身份认证表单。'
 };
 
 export default function SignInViewPage() {

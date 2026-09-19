@@ -20,28 +20,32 @@ const useThemeSwitching = () => {
   const themeActions = [
     {
       id: 'cycleTheme',
-      name: 'Switch Theme',
+      name: '切换主题',
       shortcut: ['t', 't'],
-      section: 'Theme',
+      keywords: 'switch theme cycle',
+      section: '主题',
       perform: cycleTheme
     },
     {
       id: 'toggleDarkLight',
-      name: 'Toggle Dark/Light Mode',
+      name: '切换深色/浅色模式',
       shortcut: ['d', 'd'],
-      section: 'Theme',
+      keywords: 'toggle dark light mode',
+      section: '主题',
       perform: toggleDarkLight
     },
     {
       id: 'setLightTheme',
-      name: 'Set Light Theme',
-      section: 'Theme',
+      name: '切换为浅色主题',
+      keywords: 'set light theme',
+      section: '主题',
       perform: () => setTheme('light')
     },
     {
       id: 'setDarkTheme',
-      name: 'Set Dark Theme',
-      section: 'Theme',
+      name: '切换为深色主题',
+      keywords: 'set dark theme',
+      section: '主题',
       perform: () => setTheme('dark')
     }
   ];

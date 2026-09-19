@@ -7,8 +7,8 @@ import { workspacesInfoContent } from '@/config/infoconfig';
 export default function WorkspacesPage() {
   return (
     <PageContainer
-      pageTitle='Workspaces'
-      pageDescription='Manage your workspaces and switch between them'
+      pageTitle='工作区'
+      pageDescription='管理工作区，并在多个工作区之间切换'
       infoContent={workspacesInfoContent}
     >
       <OrganizationList

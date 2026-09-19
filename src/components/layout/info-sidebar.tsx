@@ -16,14 +16,14 @@ import {
 
 // Default/fallback data when no content is set
 const defaultData = {
-  title: 'Documentation',
+  title: '文档',
   sections: [
     {
-      title: 'Getting Started',
-      description: 'Learn how to get started with this application.',
+      title: '快速开始',
+      description: '了解如何开始使用本应用。',
       links: [
         {
-          title: 'Installation Guide',
+          title: '安装指南',
           url: '#'
         }
       ]
@@ -63,7 +63,7 @@ export function InfoSidebar({ ...props }: React.ComponentProps<typeof Infobar>) 
                     {section.links && section.links.length > 0 && (
                       <div className='flex flex-col gap-2'>
                         <h4 className='text-muted-foreground text-xs font-medium tracking-wide uppercase'>
-                          Learn more
+                          了解更多
                         </h4>
                         <ul className='flex flex-col gap-1.5'>
                           {section.links.map((link) => (
@@ -85,9 +85,7 @@ export function InfoSidebar({ ...props }: React.ComponentProps<typeof Infobar>) 
                   </div>
                 ))
               ) : (
-                <div className='text-muted-foreground px-2 py-4 text-center text-sm'>
-                  No content available
-                </div>
+                <div className='text-muted-foreground px-2 py-4 text-center text-sm'>暂无内容</div>
               )}
             </div>
           </InfobarGroupContent>

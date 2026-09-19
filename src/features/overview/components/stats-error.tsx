@@ -15,7 +15,7 @@ export function StatsErrorAlert({ message, action }: StatsErrorAlertProps) {
   return (
     <Alert variant='destructive'>
       <Icons.alertCircle className='h-4 w-4' />
-      <AlertTitle>Error</AlertTitle>
+      <AlertTitle>错误</AlertTitle>
       <AlertDescription className='flex flex-col items-start gap-3'>
         <span>{message}</span>
         {action}

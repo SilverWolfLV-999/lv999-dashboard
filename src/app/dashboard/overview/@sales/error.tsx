@@ -20,21 +20,21 @@ export default function SalesError({ error, reset }: { error: Error; reset: () =
 
   return (
     <StatsErrorAlert
-      message={`Failed to load sales data: ${error.message}`}
+      message={`销售数据加载失败：${error.message}`}
       action={
         <>
           <Button variant='outline' size='sm' onClick={retry} disabled={isPending}>
             {isPending ? (
               <>
                 <Icons.spinner className='mr-2 h-4 w-4 animate-spin' aria-hidden='true' />
-                Retrying...
+                重试中...
               </>
             ) : (
-              'Try again'
+              '重试'
             )}
           </Button>
           <span role='status' aria-live='polite' className='sr-only'>
-            {isPending ? 'Retrying' : ''}
+            {isPending ? '重试中' : ''}
           </span>
         </>
       }

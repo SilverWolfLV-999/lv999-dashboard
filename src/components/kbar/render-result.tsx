@@ -7,7 +7,7 @@ export default function RenderResults() {
   if (!results.length) {
     return (
       <div className='text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm'>
-        No results found.
+        未找到结果。
       </div>
     );
   }

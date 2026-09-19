@@ -43,15 +43,15 @@ export function RecentSales() {
   return (
     <Card className='h-full'>
       <CardHeader>
-        <CardTitle>Recent Sales</CardTitle>
-        <CardDescription>You made 265 sales this month.</CardDescription>
+        <CardTitle>最近销售</CardTitle>
+        <CardDescription>本月你完成了 265 笔销售。</CardDescription>
       </CardHeader>
       <CardContent>
         <div className='space-y-8'>
           {salesData.map((sale, index) => (
             <div key={index} className='flex items-center'>
               <Avatar className='h-9 w-9'>
-                <AvatarImage src={sale.avatar} alt='Avatar' />
+                <AvatarImage src={sale.avatar} alt='头像' />
                 <AvatarFallback>{sale.fallback}</AvatarFallback>
               </Avatar>
               <div className='ml-4 space-y-1'>

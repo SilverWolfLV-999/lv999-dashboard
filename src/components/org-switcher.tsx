@@ -75,8 +75,8 @@ export function OrgSwitcher() {
                   : 'visible max-w-full opacity-100'
               }`}
             >
-              <span className='truncate font-medium'>Loading...</span>
-              <span className='text-muted-foreground truncate text-xs'>Organizations</span>
+              <span className='truncate font-medium'>加载中...</span>
+              <span className='text-muted-foreground truncate text-xs'>组织</span>
             </div>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -104,8 +104,8 @@ export function OrgSwitcher() {
                   : 'visible max-w-full opacity-100'
               }`}
             >
-              <span className='truncate font-medium'>Create organization</span>
-              <span className='text-muted-foreground truncate text-xs'>Get started</span>
+              <span className='truncate font-medium'>创建组织</span>
+              <span className='text-muted-foreground truncate text-xs'>开始使用</span>
             </div>
             <Icons.chevronsUpDown
               className={`ml-auto transition-all duration-200 ease-in-out ${
@@ -162,7 +162,7 @@ export function OrgSwitcher() {
               <span className='truncate font-medium'>{displayOrganization.name}</span>
               <span className='text-muted-foreground truncate text-xs'>
                 {userMemberships.data.find((m) => m.organization.id === displayOrganization.id)
-                  ?.role || 'Organization'}
+                  ?.role || '组织'}
               </span>
             </div>
             <Icons.chevronsUpDown
@@ -180,9 +180,7 @@ export function OrgSwitcher() {
             sideOffset={4}
           >
             <DropdownMenuGroup>
-              <DropdownMenuLabel className='text-muted-foreground text-xs'>
-                Organizations
-              </DropdownMenuLabel>
+              <DropdownMenuLabel className='text-muted-foreground text-xs'>组织</DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuGroup>
               {userMemberships.data.map((membership, index) => {
@@ -224,7 +222,7 @@ export function OrgSwitcher() {
                 <div className='flex size-6 items-center justify-center rounded-md border bg-transparent'>
                   <Icons.add className='size-4' />
                 </div>
-                <div className='text-muted-foreground font-medium'>Add organization</div>
+                <div className='text-muted-foreground font-medium'>添加组织</div>
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
