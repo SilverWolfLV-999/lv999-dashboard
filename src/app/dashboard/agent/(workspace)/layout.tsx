@@ -21,8 +21,10 @@ export default async function AgentWorkspaceLayout({ children }: { children: Rea
     queryFn: async () => ({ conversations: await listConversations(userId) })
   });
 
+  // 根节点必须带 flex-1：dashboard 外壳的 InfobarProvider 用 flex 行包裹页面内容，
+  // 缺省会按内容收缩（shrink-to-fit）导致工作区靠左停靠、右侧留大块空白（历史 bug）。
   return (
-    <div className='flex h-[calc(100svh-4rem)] md:h-[calc(100svh-3.5rem)]'>
+    <div className='flex h-[calc(100svh-4rem)] min-w-0 flex-1 md:h-[calc(100svh-3.5rem)]'>
       <aside className='hidden w-64 shrink-0 border-r lg:block'>
         <HydrationBoundary state={dehydrate(queryClient)}>
           <ConversationSidebar />
