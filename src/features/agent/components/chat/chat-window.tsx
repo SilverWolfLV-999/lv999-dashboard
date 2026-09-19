@@ -2,15 +2,15 @@
 
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
-import { useMutation } from '@tanstack/react-query';
+import { DefaultChatTransport } from 'ai';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
+import { agentKeys } from '../../api/queries';
 import type { Conversation } from '../../api/types';
-import { NEW_CHAT_KEY } from '../../constants/conversation';
 import { DEFAULT_MODEL, getModelLabel } from '../../constants/models';
-import { adoptChatEntry, getChatEntry } from '../../lib/chat-store';
 import { ChatComposer } from './chat-composer';
 import { ChatEmptyState } from './chat-empty-state';
 import { MessageItem } from './message-item';
@@ -21,54 +21,48 @@ interface ChatWindowProps {
 }
 
 /**
- * 对话窗口。
+ * 对话窗口（官方可恢复流模式）。
  *
- * 消息与流式状态托管在 chat-store 的会话级 Chat 实例中（组件树之外）：
- * - 切换会话时旧实例继续消费流，任务在后台完成，切回可看到实时状态
- * - 组件仅通过 useChat({ chat }) 订阅；输入框/模型等 UI 状态由页面层 key 隔离
+ * 每个会话挂载时创建独立 Chat 实例；`resume: true` 会在挂载时自动 GET
+ * /api/agent/chat/[id]/stream 重连进行中的流（刷新/切回会话均实时恢复）。
+ * 断开只是断开，不会取消生成；停止按钮走专用 stop 端点（真取消）。
  */
 export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
-  const conversationKey = conversation?.id ?? NEW_CHAT_KEY;
-  const [entry] = useState(() =>
-    getChatEntry(conversationKey, {
-      conversationId: conversation?.id,
-      initialMessages
-    })
-  );
+  const [initialConversationId] = useState(conversation?.id);
+  const conversationIdRef = useRef(conversation?.id);
   const [input, setInput] = useState('');
   const [model, setModel] = useState(conversation?.model ?? DEFAULT_MODEL);
+  const queryClient = useQueryClient();
 
   const createConversation = useMutation(createConversationMutation);
   const updateConversation = useMutation(updateConversationMutation);
 
-  const { messages, sendMessage, status, stop, error, regenerate, setMessages } = useChat({
-    chat: entry.chat
+  const { messages, sendMessage, status, stop, error, regenerate } = useChat({
+    id: initialConversationId,
+    messages: initialMessages,
+    resume: Boolean(initialConversationId),
+    transport: new DefaultChatTransport({
+      api: '/api/agent/chat',
+      body: () => ({ conversationId: conversationIdRef.current }),
+      prepareReconnectToStreamRequest: ({ id }) => ({
+        api: `/api/agent/chat/${id}/stream`
+      })
+    }),
+    onFinish: () => {
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all });
+    }
   });
 
   const isGenerating = status === 'submitted' || status === 'streaming';
-
-  // 停止生成后，服务端仍会把这次生成跑完并落库完整版本。
-  // 若用户紧接着发下一条消息，需要剔除本地未完成的助手消息（与完整版本同 id），
-  // 否则它的部分内容会覆盖服务端已落库的完整消息。
-  const stoppedMessageIdRef = useRef<string | null>(null);
-
-  const handleStop = () => {
-    const last = messages.at(-1);
-    if (last?.role === 'assistant') {
-      stoppedMessageIdRef.current = last.id;
-    }
-    stop();
-  };
 
   const handleSubmit = async () => {
     const text = input.trim();
     if (!text || isGenerating || createConversation.isPending) return;
 
-    if (!entry.getConversationId()) {
+    if (!conversationIdRef.current) {
       try {
         const created = await createConversation.mutateAsync({ model });
-        entry.setConversationId(created.id);
-        adoptChatEntry(NEW_CHAT_KEY, created.id);
+        conversationIdRef.current = created.id;
         window.history.replaceState(null, '', `/dashboard/agent/${created.id}`);
       } catch {
         toast.error('创建会话失败，请稍后重试');
@@ -76,18 +70,32 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
       }
     }
 
-    if (stoppedMessageIdRef.current) {
-      const stoppedId = stoppedMessageIdRef.current;
-      stoppedMessageIdRef.current = null;
-      setMessages((prev) => prev.filter((message) => message.id !== stoppedId));
-    }
     setInput('');
     void sendMessage({ text });
   };
 
+  // 停止：先通知服务端取消生产（并保存部分快照），再关闭本地读取。
+  // 注意：不要在任何"离开页面/卸载"场景调用 stop 端点——离开属于断开，应保持可恢复。
+  const handleStop = () => {
+    const conversationId = conversationIdRef.current;
+    if (conversationId) {
+      const last = messages.at(-1);
+      const assistantMessage = last?.role === 'assistant' ? last : undefined;
+      void fetch(`/api/agent/chat/${conversationId}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assistantMessage,
+          activeStreamId: conversation?.activeStreamId ?? null
+        })
+      });
+    }
+    stop();
+  };
+
   const handleModelChange = (next: string) => {
     setModel(next);
-    const conversationId = entry.getConversationId();
+    const conversationId = conversationIdRef.current;
     if (conversationId) {
       updateConversation.mutate({ id: conversationId, values: { model: next } });
     }

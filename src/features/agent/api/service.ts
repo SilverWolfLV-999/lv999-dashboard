@@ -27,6 +27,7 @@ function toConversation(row: ConversationRow): Conversation {
     id: row.id,
     title: row.title,
     model: row.model,
+    activeStreamId: row.activeStreamId ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
@@ -125,6 +126,34 @@ export async function touchConversation(conversationId: string): Promise<void> {
     .where(eq(conversations.id, conversationId));
 }
 
+/** 记录会话当前的活跃可恢复流（刷新后据此重连） */
+export async function setConversationActiveStream(
+  conversationId: string,
+  activeStreamId: string
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(conversations)
+    .set({ activeStreamId })
+    .where(eq(conversations.id, conversationId));
+}
+
+/** 仅在引用仍指向同一流时清除（避免误清掉之后启动的新流） */
+export async function clearConversationActiveStream(
+  conversationId: string,
+  activeStreamId: string
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db
+    .update(conversations)
+    .set({ activeStreamId: null })
+    .where(
+      and(eq(conversations.id, conversationId), eq(conversations.activeStreamId, activeStreamId))
+    )
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
 /** 会话仍是默认标题时，用首条用户消息生成标题 */
 export async function applyAutoTitle(
   userId: string,
@@ -192,6 +221,21 @@ export async function saveUserMessage(
     .insert(messages)
     .values(toMessageRow(conversationId, message))
     .onConflictDoUpdate({ target: messages.id, set: messageUpsertSet });
+}
+
+/**
+ * 停止流时保存客户端的部分快照：只插不覆盖。
+ * 服务端取消完成后会以自身版本 upsert（权威版本）；此快照仅防止服务端取消未完成时丢内容。
+ */
+export async function saveAssistantSnapshot(
+  conversationId: string,
+  message: PersistedUIMessage
+): Promise<void> {
+  const db = getDb();
+  await db
+    .insert(messages)
+    .values(toMessageRow(conversationId, message))
+    .onConflictDoNothing({ target: messages.id });
 }
 
 /**

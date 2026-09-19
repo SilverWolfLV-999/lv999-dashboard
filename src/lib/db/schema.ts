@@ -13,6 +13,8 @@ export const conversations = pgTable('conversations', {
   userId: text('user_id').notNull(),
   title: text('title').notNull(),
   model: text('model').notNull().default('deepseek-flash'),
+  /** 正在进行的可恢复流 id（resumable-stream）；无活跃流时为 null */
+  activeStreamId: text('active_stream_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });

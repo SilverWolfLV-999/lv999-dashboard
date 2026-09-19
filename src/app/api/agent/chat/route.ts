@@ -2,18 +2,24 @@ import { auth } from '@clerk/nextjs/server';
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
+  generateId,
   toUIMessageStream,
   type InferAgentUIMessage,
   type UIMessage
 } from 'ai';
+import { after } from 'next/server';
+import { createResumableStreamContext } from 'resumable-stream';
 import { buildAgent } from '@/features/agent/api/agent';
 import {
   applyAutoTitle,
+  clearConversationActiveStream,
   getConversation,
   saveUserMessage,
+  setConversationActiveStream,
   syncConversationMessages,
   touchConversation
 } from '@/features/agent/api/service';
+import { watchAgentStop } from '@/features/agent/api/stop-signal';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -62,31 +68,43 @@ export async function POST(request: Request) {
   const agent = buildAgent({ userId, conversationId, modelKey: conversation.model });
   type AgentUIMessage = InferAgentUIMessage<typeof agent>;
 
-  const result = await agent.stream({
-    messages: await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true })
+  // 可恢复流 id + 停止信号消费端：
+  // stop 端点写 Redis 标志 → 这里轮询命中后 abort 底层生成（真取消），
+  // onEnd 按中断路径把已生成部分作为权威版本落库。
+  const streamId = generateId();
+  const abortController = new AbortController();
+  const stopWatching = watchAgentStop(streamId, () => {
+    abortController.abort();
   });
 
-  // 关键：不 await。即使用户刷新/关闭页面导致连接断开，服务端也把流消费到生成结束，
-  // 保证 onEnd 一定触发、助手消息（含产物工具调用）完整落库。
-  // 语义说明：断开 ≠ 中止；真正的"取消生成"需要 run 级取消信令，暂不实现
-  // （当前由 maxDuration 300s 与 agent 240s 超时兜底成本）。
-  result.consumeStream({
-    onError: (error) => {
-      console.error(`[agent] background stream error for conversation ${conversationId}:`, error);
-    }
+  const result = await agent.stream({
+    messages: await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true }),
+    abortSignal: abortController.signal
   });
 
   return createUIMessageStreamResponse({
     stream: toUIMessageStream({
       stream: result.stream,
       originalMessages: messages as AgentUIMessage[],
-      onEnd: async ({ messages: finalMessages, isAborted }) => {
+      onEnd: async ({ messages: finalMessages }) => {
+        stopWatching();
         await syncConversationMessages(conversationId, finalMessages);
+        await clearConversationActiveStream(conversationId, streamId);
         await touchConversation(conversationId);
-        if (isAborted) {
-          console.warn(`[agent] stream aborted for conversation ${conversationId}`);
-        }
       }
-    })
+    }),
+    async consumeSseStream({ stream }) {
+      // 交给 resumable-stream：生产者会在无人订阅时把流写完整（waitUntil 保活），
+      // 客户端可在这条流进行中通过 GET /api/agent/chat/[id]/stream 重新订阅（刷新/切回实时重连）。
+      try {
+        const streamContext = createResumableStreamContext({ waitUntil: after });
+        await streamContext.createNewResumableStream(streamId, () => stream);
+        await setConversationActiveStream(conversationId, streamId);
+      } catch (error) {
+        // 降级：resumable 建立失败时仍继续直接流式返回；断开场景下的后台完成不再受保障
+        console.error('[agent] resumable stream setup failed:', error);
+        await stream.cancel().catch(() => {});
+      }
+    }
   });
 }

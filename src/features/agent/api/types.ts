@@ -4,6 +4,8 @@ export interface Conversation {
   id: string;
   title: string;
   model: string;
+  /** 正在进行的可恢复流 id（用于刷新后重连与停止）；无活跃流时为 null */
+  activeStreamId: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,6 +1,6 @@
 export const DEFAULT_CONVERSATION_TITLE = '新会话';
 
-/** 新会话（尚未创建记录）在 chat-store 中使用的缓存键 */
+/** 新会话（尚未创建记录）页面的 ChatWindow key */
 export const NEW_CHAT_KEY = 'new-chat';
 
 const TITLE_MAX_LENGTH = 30;
