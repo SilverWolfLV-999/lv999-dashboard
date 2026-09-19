@@ -53,6 +53,8 @@
     "react-resizable-panels": "^4.12.2",
     "react-responsive": "^10.0.1",
     "recharts": "3.8.0",
+    "redis": "6.2.1",
+    "resumable-stream": "2.2.12",
     "sharp": "^0.35.3",
     "sonner": "^1.7.4",
     "sort-by": "^1.2.0",
