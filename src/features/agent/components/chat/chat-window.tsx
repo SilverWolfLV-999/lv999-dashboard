@@ -4,13 +4,19 @@ import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
 import { agentKeys } from '../../api/queries';
 import type { Conversation } from '../../api/types';
 import { DEFAULT_MODEL, getModelLabel } from '../../constants/models';
+import {
+  clearPendingFirstMessage,
+  setPendingFirstMessage,
+  takePendingFirstMessage
+} from '../../lib/pending-first-message';
 import { ChatComposer } from './chat-composer';
 import { ChatEmptyState } from './chat-empty-state';
 import { MessageItem } from './message-item';
@@ -33,6 +39,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [model, setModel] = useState(conversation?.model ?? DEFAULT_MODEL);
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const createConversation = useMutation(createConversationMutation);
   const updateConversation = useMutation(updateConversationMutation);
@@ -53,6 +60,19 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
     }
   });
 
+  // 新会话首页 → 会话页的一次性首条消息交接（真实导航完成后由本页发送）。
+  // 回到新会话首页（无 id）时丢弃未消费的交接，避免陈旧消息被误发送。
+  useEffect(() => {
+    if (!initialConversationId) {
+      clearPendingFirstMessage();
+      return;
+    }
+    const pendingText = takePendingFirstMessage(initialConversationId);
+    if (pendingText) {
+      void sendMessage({ text: pendingText });
+    }
+  }, [initialConversationId, sendMessage]);
+
   const isGenerating = status === 'submitted' || status === 'streaming';
 
   const handleSubmit = async () => {
@@ -62,12 +82,16 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
     if (!conversationIdRef.current) {
       try {
         const created = await createConversation.mutateAsync({ model });
-        conversationIdRef.current = created.id;
-        window.history.replaceState(null, '', `/dashboard/agent/${created.id}`);
+        // 必须真实导航（router.replace）进入会话页；不能用 window.history.replaceState——
+        // 那会让 URL 与渲染树脱节，之后回到 /dashboard/agent 时组件被复用、状态不重置。
+        // 首条消息经一次性交接由目标页消费发送（导航会重挂载本组件）。
+        setPendingFirstMessage(created.id, text);
+        setInput('');
+        router.replace(`/dashboard/agent/${created.id}`);
       } catch {
         toast.error('创建会话失败，请稍后重试');
-        return;
       }
+      return;
     }
 
     setInput('');
