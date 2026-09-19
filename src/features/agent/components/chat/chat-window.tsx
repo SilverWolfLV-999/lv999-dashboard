@@ -145,12 +145,18 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
           {messages.length === 0 ? (
             <ChatEmptyState onPick={setInput} />
           ) : (
-            messages.map((message) => (
+            messages.map((message, index) => (
               <div
                 key={message.id}
                 className='[content-visibility:auto] [contain-intrinsic-size:auto_120px]'
               >
-                <MessageItem message={message} />
+                <MessageItem
+                  message={message}
+                  // 仅最后一条 assistant 消息可能含进行中的 tool part；非流式期间视为已停止（AI SDK 中止语义下 part 不落终态）
+                  isActive={
+                    isGenerating && index === messages.length - 1 && message.role === 'assistant'
+                  }
+                />
               </div>
             ))
           )}

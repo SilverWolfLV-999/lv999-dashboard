@@ -12,8 +12,11 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Icons } from '@/components/icons';
+import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { getArtifactKindMeta } from '../../constants/kinds';
 import { artifactQueryOptions } from '../../api/queries';
+import { downloadArtifact } from '../../lib/artifact-download';
 import { formatBytes } from '../../lib/format';
 
 interface ArtifactPreviewDialogProps {
@@ -25,17 +28,20 @@ interface ArtifactPreviewDialogProps {
 /**
  * 产物预览弹窗。
  * Markdown 用 Streamdown 渲染；HTML 一律放入 sandbox="allow-scripts" 的 iframe
- * （不加 allow-same-origin），与主站隔离，防止产物脚本访问父页面会话。
+ * （不加 allow-same-origin），与主站隔离，防止产物脚本访问父页面会话；
+ * 图片走详情端点签发的 previewUrl（私有桶签名访问，不公开桶）。
  */
 export function ArtifactPreviewDialog({
   artifactId,
   open,
   onOpenChange
 }: ArtifactPreviewDialogProps) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     ...artifactQueryOptions(artifactId),
     enabled: open
   });
+  // 产物可能已在产物中心被删除：区分 404，给出明确文案
+  const notFound = error instanceof ApiError && error.status === 404;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,22 +52,25 @@ export function ArtifactPreviewDialog({
             <DialogDescription className='sr-only'>产物内容预览</DialogDescription>
           </div>
           <div className='flex shrink-0 items-center gap-2'>
-            {data && <Badge variant='outline'>{data.kind === 'html' ? 'HTML' : 'Markdown'}</Badge>}
+            {data && <Badge variant='outline'>{getArtifactKindMeta(data.kind).label}</Badge>}
             {data?.sizeBytes != null && (
               <span className='text-muted-foreground text-xs'>{formatBytes(data.sizeBytes)}</span>
             )}
-            <a
-              href={`/api/agent/artifacts/${artifactId}/download`}
+            <button
+              type='button'
+              onClick={() => void downloadArtifact(artifactId)}
               className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
             >
               <Icons.download /> 下载
-            </a>
+            </button>
           </div>
         </DialogHeader>
         <div className='min-h-0 flex-1 overflow-auto'>
           {isLoading && <div className='text-muted-foreground p-6 text-sm'>加载中…</div>}
           {isError && (
-            <div className='text-destructive p-6 text-sm'>加载产物失败，请稍后重试。</div>
+            <div className='text-destructive p-6 text-sm'>
+              {notFound ? '该产物已被删除。' : '加载产物失败，请稍后重试。'}
+            </div>
           )}
           {data?.kind === 'html' && (
             <iframe
@@ -76,6 +85,17 @@ export function ArtifactPreviewDialog({
               <Streamdown>{data.content ?? ''}</Streamdown>
             </div>
           )}
+          {data?.kind === 'image' &&
+            (data.previewUrl ? (
+              // oxlint-disable-next-line nextjs/no-img-element -- 直连 OSS 签名 URL（私有桶），不经图片优化器，避免 Vercel 带宽与签名缓存问题
+              <img
+                src={data.previewUrl}
+                alt={data.title}
+                className='mx-auto max-h-full object-contain'
+              />
+            ) : (
+              <div className='text-muted-foreground p-6 text-sm'>图片加载中…</div>
+            ))}
         </div>
       </DialogContent>
     </Dialog>

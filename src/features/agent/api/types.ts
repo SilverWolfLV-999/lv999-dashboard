@@ -23,7 +23,7 @@ export interface ConversationsResponse {
   conversations: Conversation[];
 }
 
-export type ArtifactKind = 'markdown' | 'html';
+export type ArtifactKind = 'markdown' | 'html' | 'image';
 
 export interface Artifact {
   id: string;
@@ -39,6 +39,10 @@ export interface Artifact {
 
 export interface ArtifactDetail extends Artifact {
   content: string | null;
+  /** OSS 对象 key（图片等二进制产物非空；详情端点据此签发 previewUrl） */
+  storageKey: string | null;
+  /** 图片产物签名预览 URL（3600s 有效，刷新会话后重新签发）；非图片或未签发为 null */
+  previewUrl: string | null;
 }
 
 export interface ArtifactFilters {

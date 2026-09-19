@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Icons } from '@/components/icons';
 import { deleteArtifactMutation } from '../../../api/mutations';
+import { downloadArtifact } from '../../../lib/artifact-download';
 import type { Artifact } from '../../../api/types';
 
 /**
@@ -79,11 +80,7 @@ export function CellAction({ data }: CellActionProps) {
             <DropdownMenuItem onClick={openPreview}>
               <Icons.eye className='mr-2 h-4 w-4' /> 预览
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                window.location.href = `/api/agent/artifacts/${data.id}/download`;
-              }}
-            >
+            <DropdownMenuItem onClick={() => void downloadArtifact(data.id)}>
               <Icons.download className='mr-2 h-4 w-4' /> 下载
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDeleteOpen(true)}>

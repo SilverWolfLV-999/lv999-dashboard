@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { getArtifact } from '@/features/agent/api/service';
+import { getSignedUrl } from '@/lib/oss';
 
 export const runtime = 'nodejs';
 
@@ -7,7 +8,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 function buildFileName(title: string, kind: string): string {
   const safeTitle = title.replace(/[\\/:*?"<>|]/g, '-').trim() || 'artifact';
-  const extension = kind === 'html' ? 'html' : 'md';
+  const extension = kind === 'html' ? 'html' : kind === 'image' ? 'png' : 'md';
   return `${safeTitle}.${extension}`;
 }
 
@@ -22,7 +23,15 @@ export async function GET(_request: Request, context: RouteContext) {
     return new Response('Artifact not found', { status: 404 });
   }
   if (artifact.content === null) {
-    // Phase 2 起 OSS 存储的产物走签名 URL，不再经此接口
+    // Phase 2：OSS 存储的产物（图片）→ 带 response 覆盖的签名 URL（TTL 300s，附件下载名），302 直连 OSS
+    // （只覆盖 content-disposition：OSS 不允许覆盖 content-type，对象上传时已固化 image/png）
+    if (artifact.kind === 'image' && artifact.storageKey) {
+      const fileName = buildFileName(artifact.title, artifact.kind);
+      const url = await getSignedUrl(artifact.storageKey, 300, {
+        contentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      });
+      return Response.redirect(url, 302);
+    }
     return new Response('Artifact content is stored externally', { status: 501 });
   }
 

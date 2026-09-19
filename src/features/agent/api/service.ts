@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import type { UIMessage } from 'ai';
 import { and, asc, count, desc, eq, gt, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { cache } from 'react';
 import { getDb } from '@/lib/db';
 import { artifacts, conversations, messages } from '@/lib/db/schema';
+import { artifactObjectKey, getOssClient, putObject } from '@/lib/oss';
 import { DEFAULT_CONVERSATION_TITLE, buildConversationTitle } from '../constants/conversation';
 import type {
   Artifact,
@@ -345,6 +347,39 @@ export async function createArtifact(params: {
   return { id: rows[0].id, sizeBytes };
 }
 
+/**
+ * 图片产物：应用层预生成 artifactId → 转存 OSS → 一次性 insert 全字段
+ * （避免「先插后更」的两次写库；prompt 存 content 列可溯源/可重试）。
+ */
+export async function createImageArtifact(params: {
+  userId: string;
+  conversationId: string;
+  title: string;
+  prompt: string;
+  imageBuffer: Buffer;
+  mime: string;
+}): Promise<{ id: string; sizeBytes: number }> {
+  const artifactId = randomUUID();
+  const storageKey = artifactObjectKey(params.userId, artifactId, 'png');
+  await putObject(storageKey, params.imageBuffer, params.mime);
+
+  const sizeBytes = params.imageBuffer.byteLength;
+  const db = getDb();
+  await db.insert(artifacts).values({
+    id: artifactId,
+    userId: params.userId,
+    conversationId: params.conversationId,
+    title: params.title,
+    kind: 'image',
+    content: params.prompt,
+    storageKey,
+    mime: params.mime,
+    sizeBytes,
+    status: 'ready'
+  });
+  return { id: artifactId, sizeBytes };
+}
+
 function parseArtifactOrderBy(sort?: string): SQL {
   if (!sort) return desc(artifacts.createdAt);
   try {
@@ -419,7 +454,8 @@ export async function getArtifact(
     .limit(1);
   const row = rows[0];
   if (!row) return undefined;
-  return { ...toArtifact(row), content: row.content };
+  // previewUrl 由调用方（详情端点）签发：data access 层不关心签名过期策略
+  return { ...toArtifact(row), content: row.content, storageKey: row.storageKey, previewUrl: null };
 }
 
 export async function deleteArtifact(userId: string, artifactId: string): Promise<boolean> {
@@ -427,6 +463,17 @@ export async function deleteArtifact(userId: string, artifactId: string): Promis
   const rows = await db
     .delete(artifacts)
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.userId, userId)))
-    .returning({ id: artifacts.id });
-  return rows.length > 0;
+    .returning({ id: artifacts.id, storageKey: artifacts.storageKey });
+  if (rows.length === 0) return false;
+
+  // OSS 对象顺带删除；失败仅告警不阻塞（DB 行已删，残留对象无访问路径）
+  const storageKey = rows[0].storageKey;
+  if (storageKey) {
+    try {
+      await getOssClient().delete(storageKey);
+    } catch (error) {
+      console.warn('[agent] failed to delete OSS object:', { storageKey, error });
+    }
+  }
+  return true;
 }

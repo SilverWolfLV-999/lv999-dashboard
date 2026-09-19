@@ -38,7 +38,21 @@ export async function putObject(key: string, body: Buffer, contentType: string):
   });
 }
 
-/** 生成带签名的临时访问 URL（私有 bucket 读取） */
-export async function getSignedUrl(key: string, expiresInSeconds = 3600): Promise<string> {
-  return getOssClient().signatureUrl(key, { expires: expiresInSeconds });
+/**
+ * 生成带签名的临时访问 URL（私有 bucket 读取）。
+ * response 覆盖参数可控制 OSS 返回的响应头（如附件下载文件名）。
+ * 注意：OSS 不允许覆盖 content-type（response-content-type 会报 400
+ * "Can not override response header on content-type"），对象上传时已固化 Content-Type。
+ */
+export async function getSignedUrl(
+  key: string,
+  expiresInSeconds = 3600,
+  response?: { contentDisposition?: string }
+): Promise<string> {
+  return getOssClient().signatureUrl(key, {
+    expires: expiresInSeconds,
+    ...(response?.contentDisposition && {
+      response: { 'content-disposition': response.contentDisposition }
+    })
+  });
 }

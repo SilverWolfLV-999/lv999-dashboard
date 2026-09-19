@@ -5,6 +5,7 @@ import type { Column, ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/badge';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
 import { Icons } from '@/components/icons';
+import { ARTIFACT_KIND_META, ARTIFACT_KINDS, getArtifactKindMeta } from '../../../constants/kinds';
 import type { Artifact } from '../../../api/types';
 import { formatBytes, formatDateTime } from '../../../lib/format';
 import { CellAction } from './cell-action';
@@ -40,11 +41,11 @@ export const columns: ColumnDef<Artifact>[] = [
       <DataTableColumnHeader column={column} title='类型' />
     ),
     cell: ({ row }) => {
-      const KindIcon = row.original.kind === 'html' ? Icons.code : Icons.post;
+      const { label, icon: KindIcon } = getArtifactKindMeta(row.original.kind);
       return (
         <Badge variant='outline'>
           <KindIcon className='size-3' />
-          {row.original.kind === 'html' ? 'HTML' : 'Markdown'}
+          {label}
         </Badge>
       );
     },
@@ -52,10 +53,10 @@ export const columns: ColumnDef<Artifact>[] = [
     meta: {
       label: '类型',
       variant: 'multiSelect' as const,
-      options: [
-        { label: 'Markdown', value: 'markdown' },
-        { label: 'HTML', value: 'html' }
-      ]
+      options: ARTIFACT_KINDS.map((kind) => ({
+        label: ARTIFACT_KIND_META[kind].label,
+        value: kind
+      }))
     }
   },
   {

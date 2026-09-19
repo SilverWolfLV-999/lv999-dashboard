@@ -12,6 +12,7 @@ import { Icons } from '@/components/icons';
 
 const EXAMPLES = [
   '写一篇介绍杭州秋日漫步路线的小红书文案，语气轻快，保存为 Markdown',
+  '生成一张杭州秋日漫步主题的小红书封面图',
   '为一个精品咖啡品牌写 3 版 slogan，每版保存为一个 Markdown 产物',
   '做一个「星空观测入门指南」的单页 HTML 落地页，包含样式与简单交互'
 ];
@@ -25,7 +26,8 @@ export function ChatEmptyState({ onPick }: { onPick: (text: string) => void }) {
         </EmptyMedia>
         <EmptyTitle>Agent 创作工作台</EmptyTitle>
         <EmptyDescription>
-          用自然语言描述创作需求，Agent 会规划并产出 Markdown / HTML 产物，可在产物中心统一管理。
+          用自然语言描述创作需求，Agent 会规划并产出 Markdown / HTML /
+          图片产物，可在产物中心统一管理。
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className='max-w-lg'>

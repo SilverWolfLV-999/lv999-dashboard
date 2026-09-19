@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Icons } from '@/components/icons';
 import { cn } from '@/lib/utils';
+import { getArtifactKindMeta } from '../../constants/kinds';
+import { downloadArtifact } from '../../lib/artifact-download';
 import { formatBytes } from '../../lib/format';
 import type { ArtifactKind } from '../../api/types';
 
@@ -26,7 +28,7 @@ interface ArtifactCardProps {
 export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCardProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
-  const KindIcon = kind === 'html' ? Icons.code : Icons.post;
+  const { label, icon: KindIcon } = getArtifactKindMeta(kind);
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
   const openPreview = () => {
@@ -43,7 +45,7 @@ export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCar
         <div className='min-w-0 flex-1'>
           <p className='truncate text-sm font-medium'>{title}</p>
           <div className='text-muted-foreground mt-1 flex items-center gap-2 text-xs'>
-            <Badge variant='outline'>{kind === 'html' ? 'HTML' : 'Markdown'}</Badge>
+            <Badge variant='outline'>{label}</Badge>
             {typeof sizeBytes === 'number' && <span>{formatBytes(sizeBytes)}</span>}
           </div>
         </div>
@@ -55,12 +57,13 @@ export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCar
           >
             <Icons.eye /> 预览
           </button>
-          <a
-            href={`/api/agent/artifacts/${artifactId}/download`}
+          <button
+            type='button'
+            onClick={() => void downloadArtifact(artifactId)}
             className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
           >
             <Icons.download /> 下载
-          </a>
+          </button>
         </div>
       </div>
       {previewMounted && (
