@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import { and, asc, count, desc, eq, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { artifacts, conversations, messages } from '@/lib/db/schema';
 import { DEFAULT_CONVERSATION_TITLE, buildConversationTitle } from '../constants/conversation';
@@ -224,6 +224,38 @@ export async function saveUserMessage(
 }
 
 /**
+ * 重试/重新生成场景的定点清理：若目标 user 消息仍是会话内最后一条用户消息，
+ * 删除其后残留的 assistant 消息（被取代的失败/半截回答）。
+ *
+ * 只在新请求开始阶段执行（而非陈旧 onEnd 回调），天然避开历史并发误删问题；
+ * 守卫条件保证不会误删其他端更新的新轮次。
+ */
+export async function cleanupSupersededResponses(
+  conversationId: string,
+  userMessageId: string
+): Promise<void> {
+  const db = getDb();
+  const latestUserRows = await db
+    .select({ id: messages.id, createdAt: messages.createdAt })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), eq(messages.role, 'user')))
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+  const latestUser = latestUserRows[0];
+  if (!latestUser || latestUser.id !== userMessageId) return;
+
+  await db
+    .delete(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.role, 'assistant'),
+        gt(messages.createdAt, latestUser.createdAt)
+      )
+    );
+}
+
+/**
  * 停止流时保存客户端的部分快照：只插不覆盖。
  * 服务端取消完成后会以自身版本 upsert（权威版本）；此快照仅防止服务端取消未完成时丢内容。
  */
@@ -239,22 +271,37 @@ export async function saveAssistantSnapshot(
 }
 
 /**
- * 流结束后落库（单调写入）：
- * - 只做幂等 upsert，绝不删除任何"不在列表中的消息"。
- *   历史教训：此前的"删除其余消息"策略在并发场景下会误删数据——
- *   刷新后重建的实例从旧快照发出新请求时，迟到/陈旧的 onEnd 会用旧列表
- *   把其他请求刚写入的消息删除。
+ * 流结束后落库（按所有权更新，官方 merge 纪律）：
+ * - 仅对"本轮新产生"的消息（finalMessages 超出 originalMessages 的尾部 = 本轮 assistant 消息）
+ *   执行冲突更新；
+ * - 其余已存在的旧消息（客户端视图）一律 onConflictDoNothing，避免用陈旧视图
+ *   覆盖服务端较新版本（"Avoid overwriting a newer server-written message with an
+ *   older client snapshot"），同时不做任何删除。
  */
 export async function syncConversationMessages(
   conversationId: string,
-  uiMessages: PersistedUIMessage[]
+  originalMessages: PersistedUIMessage[],
+  finalMessages: PersistedUIMessage[]
 ): Promise<void> {
   const db = getDb();
-  if (uiMessages.length === 0) return;
-  await db
-    .insert(messages)
-    .values(uiMessages.map((message) => toMessageRow(conversationId, message)))
-    .onConflictDoUpdate({ target: messages.id, set: messageUpsertSet });
+  if (finalMessages.length === 0) return;
+
+  const originalIds = new Set(originalMessages.map((message) => message.id));
+  const existingMessages = finalMessages.filter((message) => originalIds.has(message.id));
+  const ownedMessages = finalMessages.filter((message) => !originalIds.has(message.id));
+
+  if (existingMessages.length > 0) {
+    await db
+      .insert(messages)
+      .values(existingMessages.map((message) => toMessageRow(conversationId, message)))
+      .onConflictDoNothing({ target: messages.id });
+  }
+  if (ownedMessages.length > 0) {
+    await db
+      .insert(messages)
+      .values(ownedMessages.map((message) => toMessageRow(conversationId, message)))
+      .onConflictDoUpdate({ target: messages.id, set: messageUpsertSet });
+  }
 }
 
 // ---------------------------------------------------------------------------

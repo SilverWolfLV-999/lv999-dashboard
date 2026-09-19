@@ -75,19 +75,21 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   };
 
   // 停止：先通知服务端取消生产（并保存部分快照），再关闭本地读取。
+  // 流 id 取当前 assistant 消息 metadata 中的值（随流下发、始终为最新）；
+  // SSR 冻结的 conversation prop 在本页生命周期内不会更新，不能用于停止请求——
+  // 否则会与 stop 端点的防误杀守卫冲突导致停止静默失效。
   // 注意：不要在任何"离开页面/卸载"场景调用 stop 端点——离开属于断开，应保持可恢复。
   const handleStop = () => {
     const conversationId = conversationIdRef.current;
     if (conversationId) {
       const last = messages.at(-1);
       const assistantMessage = last?.role === 'assistant' ? last : undefined;
+      const activeStreamId =
+        (assistantMessage?.metadata as { streamId?: string } | undefined)?.streamId ?? null;
       void fetch(`/api/agent/chat/${conversationId}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assistantMessage,
-          activeStreamId: conversation?.activeStreamId ?? null
-        })
+        body: JSON.stringify({ assistantMessage, activeStreamId })
       });
     }
     stop();

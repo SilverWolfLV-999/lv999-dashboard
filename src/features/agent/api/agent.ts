@@ -1,4 +1,4 @@
-import { ToolLoopAgent, isStepCount, tool } from 'ai';
+import { ToolLoopAgent, isStepCount, tool, type InferUITools, type UIMessage } from 'ai';
 import { z } from 'zod';
 import { DEFAULT_MODEL, isModelKey } from '../constants/models';
 import { resolveModel } from './provider';
@@ -20,15 +20,34 @@ const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，�
 5. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
 6. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
 
+const CREATE_ARTIFACT_DESCRIPTION =
+  '把一份完整作品保存为结构化产物。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。';
+
+const createArtifactInputSchema = z.object({
+  title: z.string().min(1).max(100).describe('产物标题'),
+  kind: z.enum(['markdown', 'html']).describe('产物类型'),
+  content: z.string().min(1).describe('产物完整内容')
+});
+
+/** 服务端校验历史消息使用（无需 execute，与 Agent 内工具共享同一 schema） */
+export const agentValidationTools = {
+  createArtifact: tool({
+    description: CREATE_ARTIFACT_DESCRIPTION,
+    inputSchema: createArtifactInputSchema
+  })
+};
+
+/** 与 agentValidationTools 对齐的 UI 消息类型（供 validateUIMessages 泛型推导 tools 校验类型） */
+export type AgentValidationUIMessage = UIMessage<
+  unknown,
+  never,
+  InferUITools<typeof agentValidationTools>
+>;
+
 function createArtifactTool(params: { userId: string; conversationId: string }) {
   return tool({
-    description:
-      '把一份完整作品保存为结构化产物。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。',
-    inputSchema: z.object({
-      title: z.string().min(1).max(100).describe('产物标题'),
-      kind: z.enum(['markdown', 'html']).describe('产物类型'),
-      content: z.string().min(1).describe('产物完整内容')
-    }),
+    description: CREATE_ARTIFACT_DESCRIPTION,
+    inputSchema: createArtifactInputSchema,
     execute: async ({ title, kind, content }) => {
       const sizeBytes = Buffer.byteLength(content, 'utf8');
       if (sizeBytes > MAX_ARTIFACT_SIZE_BYTES) {
@@ -60,6 +79,21 @@ export function buildAgent(params: { userId: string; conversationId: string; mod
       createArtifact: createArtifactTool(params)
     },
     stopWhen: isStepCount(6),
-    timeout: { totalMs: 240_000 }
+    timeout: { totalMs: 240_000 },
+    // 生命周期回调（官方推荐 onStepEnd/onEnd）：记录 step/usage/工具调用，为限额、计费与排障提供数据
+    onStepEnd: ({ stepNumber, finishReason, toolCalls, usage }) => {
+      console.warn('[agent] step finished', {
+        stepNumber,
+        finishReason,
+        toolCalls: toolCalls?.map((toolCall) => toolCall.toolName) ?? [],
+        totalTokens: usage.totalTokens
+      });
+    },
+    onEnd: ({ usage, steps }) => {
+      console.warn('[agent] run finished', {
+        totalSteps: steps.length,
+        totalTokens: usage.totalTokens
+      });
+    }
   });
 }

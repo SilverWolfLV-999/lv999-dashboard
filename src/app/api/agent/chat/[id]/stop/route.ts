@@ -6,8 +6,13 @@ import {
   saveAssistantSnapshot
 } from '@/features/agent/api/service';
 import { requestAgentStop } from '@/features/agent/api/stop-signal';
+import { checkRateLimit } from '@/features/agent/api/rate-limit';
 
 export const runtime = 'nodejs';
+
+/** 停止端点限流从宽（保证「停止」始终可用） */
+const STOP_RATE_LIMIT = 60;
+const STOP_RATE_LIMIT_WINDOW_SECONDS = 60;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -21,6 +26,11 @@ export async function POST(request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  // 速率限制（按用户，从宽）：防止滥用停止端点
+  if (!(await checkRateLimit('stop', userId, STOP_RATE_LIMIT, STOP_RATE_LIMIT_WINDOW_SECONDS))) {
+    return new Response('Too many requests', { status: 429 });
   }
 
   const { id } = await context.params;
