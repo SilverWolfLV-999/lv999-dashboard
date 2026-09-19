@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertModal } from '@/components/modal/alert-modal';
@@ -16,7 +17,15 @@ import {
 import { Icons } from '@/components/icons';
 import { deleteArtifactMutation } from '../../../api/mutations';
 import type { Artifact } from '../../../api/types';
-import { ArtifactPreviewDialog } from '../artifact-preview-dialog';
+
+/**
+ * 预览弹窗含完整 Markdown 渲染链（streamdown 约 99KB 未压缩），按需加载：
+ * 不打开预览则不下载该 chunk（bundle-dynamic-imports）。
+ */
+const ArtifactPreviewDialog = dynamic(
+  () => import('../artifact-preview-dialog').then((m) => m.ArtifactPreviewDialog),
+  { ssr: false }
+);
 
 interface CellActionProps {
   data: Artifact;
@@ -24,16 +33,25 @@ interface CellActionProps {
 
 export function CellAction({ data }: CellActionProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMounted, setPreviewMounted] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteMutation = useMutation(deleteArtifactMutation);
 
+  // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
+  const openPreview = () => {
+    setPreviewMounted(true);
+    setPreviewOpen(true);
+  };
+
   return (
     <>
-      <ArtifactPreviewDialog
-        artifactId={data.id}
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-      />
+      {previewMounted && (
+        <ArtifactPreviewDialog
+          artifactId={data.id}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+        />
+      )}
       <AlertModal
         isOpen={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -58,7 +76,7 @@ export function CellAction({ data }: CellActionProps) {
             <DropdownMenuLabel>操作</DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => setPreviewOpen(true)}>
+            <DropdownMenuItem onClick={openPreview}>
               <Icons.eye className='mr-2 h-4 w-4' /> 预览
             </DropdownMenuItem>
             <DropdownMenuItem

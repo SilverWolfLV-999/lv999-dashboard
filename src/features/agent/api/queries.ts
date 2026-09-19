@@ -10,8 +10,12 @@ import type {
 export const agentKeys = {
   all: ['agent'] as const,
   conversations: () => [...agentKeys.all, 'conversations'] as const,
-  artifacts: (filters: ArtifactFilters) => [...agentKeys.all, 'artifacts', filters] as const,
-  artifact: (id: string) => [...agentKeys.all, 'artifact', id] as const
+  /** 产物列表域根 key：按域失效时使用（避免 agentKeys.all 连带失效无关查询） */
+  artifactsRoot: () => [...agentKeys.all, 'artifacts'] as const,
+  artifacts: (filters: ArtifactFilters) => [...agentKeys.artifactsRoot(), filters] as const,
+  /** 产物详情域根 key */
+  artifactRoot: () => [...agentKeys.all, 'artifact'] as const,
+  artifact: (id: string) => [...agentKeys.artifactRoot(), id] as const
 };
 
 export function buildArtifactQuery(filters: ArtifactFilters): string {

@@ -28,12 +28,11 @@ import {
 } from '@/features/agent/api/service';
 import { requestAgentStop, watchAgentStop } from '@/features/agent/api/stop-signal';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
+import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-/** Vercel 函数请求体上限为 4.5MB，这里留出余量 */
-const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGES = 200;
 const MAX_PARTS_PER_MESSAGE = 500;
 const CHAT_RATE_LIMIT = 20;
@@ -52,12 +51,16 @@ export async function POST(request: Request) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  // 并行组 1：限流与读 body 互不依赖，同时发起、按「限流 → 体积 → 解析」顺序校验
+  // （限流命中时 body 已读入内存，4MB 上限内可接受）。
   // 速率限制（按用户）：保护 LLM 调用成本（官方部署指南建议）
-  if (!(await checkRateLimit('chat', userId, CHAT_RATE_LIMIT, RATE_LIMIT_WINDOW_SECONDS))) {
+  const [allowed, rawBody] = await Promise.all([
+    checkRateLimit('chat', userId, CHAT_RATE_LIMIT, RATE_LIMIT_WINDOW_SECONDS),
+    request.text()
+  ]);
+  if (!allowed) {
     return new Response('Too many requests', { status: 429 });
   }
-
-  const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, 'utf8') > MAX_REQUEST_BYTES) {
     return new Response('Request body too large', { status: 413 });
   }
@@ -82,40 +85,27 @@ export async function POST(request: Request) {
     return new Response('Too many messages', { status: 413 });
   }
 
+  // 并行组 2：消息校验（CPU）与归属查询（DB）互不依赖；
+  // 保持「校验失败 400 优先于会话不存在 404」语义。
   // 官方要求：含工具调用的消息在进入模型前必须先校验（畸形历史 → 400 而非 500）
   let validatedMessages: AgentValidationUIMessage[];
+  let conversation: Awaited<ReturnType<typeof getConversation>>;
   try {
-    validatedMessages = await validateUIMessages<AgentValidationUIMessage>({
-      messages,
-      tools: agentValidationTools
-    });
+    [validatedMessages, conversation] = await Promise.all([
+      validateUIMessages<AgentValidationUIMessage>({
+        messages,
+        tools: agentValidationTools
+      }),
+      getConversation(userId, conversationId)
+    ]);
   } catch (error) {
     if (TypeValidationError.isInstance(error)) {
       return new Response('Invalid messages', { status: 400 });
     }
     throw error;
   }
-
-  const conversation = await getConversation(userId, conversationId);
   if (!conversation) {
     return new Response('Conversation not found', { status: 404 });
-  }
-
-  // 并发防护：若仍有旧流在运行（如网络中断造成的幽灵生产），先发出停止信号再开新流
-  if (conversation.activeStreamId) {
-    await requestAgentStop(conversation.activeStreamId);
-  }
-
-  // 请求开始先落用户消息（异常场景不丢输入），并使用首条消息生成会话标题
-  const lastUserMessage = messages.toReversed().find((message) => message.role === 'user');
-  if (lastUserMessage) {
-    await saveUserMessage(conversationId, lastUserMessage);
-    // 重试/重新生成：清掉被取代的旧回答（守卫：仅当该用户消息仍是会话最后一条用户消息）
-    await cleanupSupersededResponses(conversationId, lastUserMessage.id);
-    const userText = extractText(lastUserMessage);
-    if (userText) {
-      await applyAutoTitle(userId, conversation, userText);
-    }
   }
 
   const agent = buildAgent({ userId, conversationId, modelKey: conversation.model });
@@ -124,7 +114,28 @@ export async function POST(request: Request) {
   // 开新流前先登记活跃流（官方要求开始新流时立即更新，防止窗口期刷新重连到旧流或拿 204）；
   // 停止信号消费端：stop 端点写 Redis 标志 → 这里轮询命中后 abort 底层生成（真取消）。
   const streamId = generateId();
-  await setConversationActiveStream(conversationId, streamId);
+
+  // 并行组 3：用户消息落库、活跃流登记、标题生成与旧流停止信号互不依赖
+  //（DB 不同列写入 / Redis 信号），并行执行；
+  // cleanup 保持在 saveUserMessage 之后（守卫：仅当该用户消息仍是会话最后一条用户消息）。
+  // 并发防护：若仍有旧流在运行（如网络中断造成的幽灵生产），先发出停止信号再开新流
+  const staleStreamStop = conversation.activeStreamId
+    ? requestAgentStop(conversation.activeStreamId)
+    : Promise.resolve();
+  const lastUserMessage = messages.toReversed().find((message) => message.role === 'user');
+  if (lastUserMessage) {
+    const userText = extractText(lastUserMessage);
+    // 请求开始先落用户消息（异常场景不丢输入），并使用首条消息生成会话标题
+    await Promise.all([
+      saveUserMessage(conversationId, lastUserMessage),
+      setConversationActiveStream(conversationId, streamId),
+      userText ? applyAutoTitle(userId, conversation, userText) : Promise.resolve(),
+      staleStreamStop
+    ]);
+    await cleanupSupersededResponses(conversationId, lastUserMessage.id);
+  } else {
+    await Promise.all([setConversationActiveStream(conversationId, streamId), staleStreamStop]);
+  }
 
   const abortController = new AbortController();
   const stopWatching = watchAgentStop(streamId, () => {

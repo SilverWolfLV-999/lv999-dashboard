@@ -56,7 +56,9 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
       })
     }),
     onFinish: () => {
-      void queryClient.invalidateQueries({ queryKey: agentKeys.all });
+      // 分域失效：会话列表（标题/updatedAt 变化）+ 产物列表（聊天中可能新增产物）
+      void queryClient.invalidateQueries({ queryKey: agentKeys.conversations() });
+      void queryClient.invalidateQueries({ queryKey: agentKeys.artifactsRoot() });
     }
   });
 
@@ -114,6 +116,8 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assistantMessage, activeStreamId })
+      }).catch(() => {
+        // 失败静默可接受（服务端会继续生产，与可恢复流设计自洽）；仅避免未处理的 rejection
       });
     }
     stop();
@@ -141,7 +145,14 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
           {messages.length === 0 ? (
             <ChatEmptyState onPick={setInput} />
           ) : (
-            messages.map((message) => <MessageItem key={message.id} message={message} />)
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className='[content-visibility:auto] [contain-intrinsic-size:auto_120px]'
+              >
+                <MessageItem message={message} />
+              </div>
+            ))
           )}
           {error && (
             <div className='border-destructive/40 bg-destructive/5 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm'>

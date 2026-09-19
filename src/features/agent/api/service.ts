@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai';
 import { and, asc, count, desc, eq, gt, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { cache } from 'react';
 import { getDb } from '@/lib/db';
 import { artifacts, conversations, messages } from '@/lib/db/schema';
 import { DEFAULT_CONVERSATION_TITLE, buildConversationTitle } from '../constants/conversation';
@@ -73,18 +74,21 @@ export async function listConversations(userId: string): Promise<Conversation[]>
   return rows.map(toConversation);
 }
 
-export async function getConversation(
-  userId: string,
-  conversationId: string
-): Promise<Conversation | undefined> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
-    .limit(1);
-  return rows[0] ? toConversation(rows[0]) : undefined;
-}
+/**
+ * 会话归属查询。React.cache 做 per-request 去重：
+ * 页面与 listMessages 的归属校验在同请求内只查一次（无请求作用域时退化为不缓存，无副作用）。
+ */
+export const getConversation = cache(
+  async (userId: string, conversationId: string): Promise<Conversation | undefined> => {
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+      .limit(1);
+    return rows[0] ? toConversation(rows[0]) : undefined;
+  }
+);
 
 export async function createConversation(userId: string, model: string): Promise<Conversation> {
   const db = getDb();
@@ -383,14 +387,17 @@ export async function listArtifacts(
   }
   const where = and(...conditions);
 
-  const [{ total }] = await db.select({ total: count() }).from(artifacts).where(where);
-  const rows = await db
-    .select()
-    .from(artifacts)
-    .where(where)
-    .orderBy(parseArtifactOrderBy(filters.sort))
-    .limit(limit)
-    .offset((page - 1) * limit);
+  // count 与分页数据互不依赖，并行执行（async-parallel）
+  const [[{ total }], rows] = await Promise.all([
+    db.select({ total: count() }).from(artifacts).where(where),
+    db
+      .select()
+      .from(artifacts)
+      .where(where)
+      .orderBy(parseArtifactOrderBy(filters.sort))
+      .limit(limit)
+      .offset((page - 1) * limit)
+  ]);
 
   return {
     artifacts: rows.map(toArtifact),

@@ -4,7 +4,8 @@ import { Icons } from '@/components/icons';
 import { ArtifactCard } from '../artifacts/artifact-card';
 import type { ArtifactKind } from '../../api/types';
 
-interface CreateArtifactToolPart {
+/** 供消息渲染层断言使用：保留 output 等完整字段类型，避免双重断言抹掉结构 */
+export interface CreateArtifactToolPart {
   state: string;
   input?: { title?: string } | undefined;
   output?: { artifactId: string; title: string; kind: ArtifactKind; sizeBytes: number } | undefined;

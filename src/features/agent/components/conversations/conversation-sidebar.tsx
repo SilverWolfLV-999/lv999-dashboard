@@ -173,7 +173,8 @@ function ConversationList() {
             value={renameValue}
             onChange={(event) => setRenameValue(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') submitRename();
+              // IME 合成态下 Enter 用于确认候选词，不应触发提交
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitRename();
             }}
             placeholder='会话标题'
           />

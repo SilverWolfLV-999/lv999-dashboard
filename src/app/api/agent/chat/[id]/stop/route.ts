@@ -7,6 +7,7 @@ import {
 } from '@/features/agent/api/service';
 import { requestAgentStop } from '@/features/agent/api/stop-signal';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
+import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
 
 export const runtime = 'nodejs';
 
@@ -44,10 +45,17 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ success: true });
   }
 
-  const body = (await request.json().catch(() => ({}))) as {
-    activeStreamId?: string | null;
-    assistantMessage?: UIMessage;
-  };
+  // 请求体大小上限（复用 chat 路由的 4MB 约定）：assistantMessage 会原样入库，先设防
+  const rawBody = await request.text();
+  if (Buffer.byteLength(rawBody, 'utf8') > MAX_REQUEST_BYTES) {
+    return new Response('Request body too large', { status: 413 });
+  }
+  let body: { activeStreamId?: string | null; assistantMessage?: UIMessage };
+  try {
+    body = JSON.parse(rawBody) as typeof body;
+  } catch {
+    body = {};
+  }
 
   // 客户端携带了流 id 且与当前不一致 → 过期请求，忽略（避免误杀之后启动的新流）
   if (body.activeStreamId != null && body.activeStreamId !== activeStreamId) {
