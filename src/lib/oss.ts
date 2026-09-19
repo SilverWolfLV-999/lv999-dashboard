@@ -3,7 +3,7 @@ import OSS from 'ali-oss';
 /**
  * 阿里云 OSS 封装（Phase 0 基建）。
  *
- * Phase 1 的文本产物内容存 Neon；Phase 2 起图片/视频等二进制产物使用本模块：
+ * Phase 1 的文本产物内容存 Postgres（阿里云 RDS）；Phase 2 起图片/视频等二进制产物使用本模块：
  * 上传到 OSS，数据库仅存 storage_key，读取时用签名 URL 直连 OSS。
  */
 
