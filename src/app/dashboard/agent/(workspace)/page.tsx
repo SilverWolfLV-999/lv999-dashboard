@@ -1,3 +1,4 @@
+import { NEW_CHAT_KEY } from '@/features/agent/constants/conversation';
 import { ChatWindow } from '@/features/agent/components/chat/chat-window';
 
 export const metadata = {
@@ -5,5 +6,5 @@ export const metadata = {
 };
 
 export default function AgentPage() {
-  return <ChatWindow initialMessages={[]} />;
+  return <ChatWindow key={NEW_CHAT_KEY} initialMessages={[]} />;
 }

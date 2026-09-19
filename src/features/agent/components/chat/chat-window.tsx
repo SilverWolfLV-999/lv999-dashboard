@@ -2,15 +2,15 @@
 
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
-import { agentKeys } from '../../api/queries';
 import type { Conversation } from '../../api/types';
+import { NEW_CHAT_KEY } from '../../constants/conversation';
 import { DEFAULT_MODEL, getModelLabel } from '../../constants/models';
+import { adoptChatEntry, getChatEntry } from '../../lib/chat-store';
 import { ChatComposer } from './chat-composer';
 import { ChatEmptyState } from './chat-empty-state';
 import { MessageItem } from './message-item';
@@ -21,44 +21,41 @@ interface ChatWindowProps {
 }
 
 /**
- * 对话窗口：useChat 流式渲染 + 消息/工具卡/产物卡。
+ * 对话窗口。
  *
- * 新会话流程：首条消息发送前先创建会话（React Query mutation），
- * 拿到 id 后写 ref 并历史 API 更新地址栏（不触发重新渲染/重挂载）。
+ * 消息与流式状态托管在 chat-store 的会话级 Chat 实例中（组件树之外）：
+ * - 切换会话时旧实例继续消费流，任务在后台完成，切回可看到实时状态
+ * - 组件仅通过 useChat({ chat }) 订阅；输入框/模型等 UI 状态由页面层 key 隔离
  */
 export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
+  const conversationKey = conversation?.id ?? NEW_CHAT_KEY;
+  const [entry] = useState(() =>
+    getChatEntry(conversationKey, {
+      conversationId: conversation?.id,
+      initialMessages
+    })
+  );
   const [input, setInput] = useState('');
   const [model, setModel] = useState(conversation?.model ?? DEFAULT_MODEL);
-  const [chatId] = useState(conversation?.id);
-  const [initial] = useState(initialMessages);
-  const conversationIdRef = useRef(conversation?.id);
-  const queryClient = useQueryClient();
 
   const createConversation = useMutation(createConversationMutation);
   const updateConversation = useMutation(updateConversationMutation);
 
   const { messages, sendMessage, status, stop, error, regenerate } = useChat({
-    id: chatId,
-    messages: initial,
-    transport: new DefaultChatTransport({
-      api: '/api/agent/chat',
-      body: () => ({ conversationId: conversationIdRef.current })
-    }),
-    onFinish: () => {
-      void queryClient.invalidateQueries({ queryKey: agentKeys.all });
-    }
+    chat: entry.chat
   });
 
   const isGenerating = status === 'submitted' || status === 'streaming';
 
   const handleSubmit = async () => {
     const text = input.trim();
-    if (!text || isGenerating) return;
+    if (!text || isGenerating || createConversation.isPending) return;
 
-    if (!conversationIdRef.current) {
+    if (!entry.getConversationId()) {
       try {
         const created = await createConversation.mutateAsync({ model });
-        conversationIdRef.current = created.id;
+        entry.setConversationId(created.id);
+        adoptChatEntry(NEW_CHAT_KEY, created.id);
         window.history.replaceState(null, '', `/dashboard/agent/${created.id}`);
       } catch {
         toast.error('创建会话失败，请稍后重试');
@@ -72,8 +69,9 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
 
   const handleModelChange = (next: string) => {
     setModel(next);
-    if (conversationIdRef.current) {
-      updateConversation.mutate({ id: conversationIdRef.current, values: { model: next } });
+    const conversationId = entry.getConversationId();
+    if (conversationId) {
+      updateConversation.mutate({ id: conversationId, values: { model: next } });
     }
   };
 

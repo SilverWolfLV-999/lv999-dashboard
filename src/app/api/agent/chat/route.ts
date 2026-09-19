@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     agent,
     uiMessages: messages,
     originalMessages: messages as AgentUIMessage[],
+    // 点停止/刷新页面 = 客户端断开 = 真正中止生成（onEnd 按 isAborted 尽力落库）；
+    // 切换会话不触发 abort（chat-store 中的实例继续消费流，后台生成完并完整落库）
+    abortSignal: request.signal,
     onEnd: async ({ messages: finalMessages, isAborted }) => {
       await syncConversationMessages(conversationId, finalMessages);
       await touchConversation(conversationId);

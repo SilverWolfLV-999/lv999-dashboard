@@ -28,5 +28,11 @@ export default async function ConversationPage({ params }: PageProps) {
     metadata: message.metadata ?? undefined
   }));
 
-  return <ChatWindow conversation={conversation} initialMessages={initialMessages} />;
+  return (
+    <ChatWindow
+      key={conversationId}
+      conversation={conversation}
+      initialMessages={initialMessages}
+    />
+  );
 }
