@@ -9,79 +9,81 @@ import {
   ChartTooltip,
   ChartTooltipContent
 } from '@/components/ui/chart';
-import { Badge } from '@/components/ui/badge';
-import { Icons } from '@/components/icons';
-import React from 'react';
+import type { DailyAssetCount } from '../api/types';
 
-const chartData = [
-  { month: '1月', desktop: 342, mobile: 245 },
-  { month: '2月', desktop: 876, mobile: 654 },
-  { month: '3月', desktop: 512, mobile: 387 },
-  { month: '4月', desktop: 629, mobile: 521 },
-  { month: '5月', desktop: 458, mobile: 412 },
-  { month: '6月', desktop: 781, mobile: 598 },
-  { month: '7月', desktop: 394, mobile: 312 },
-  { month: '8月', desktop: 925, mobile: 743 },
-  { month: '9月', desktop: 647, mobile: 489 },
-  { month: '10月', desktop: 532, mobile: 476 },
-  { month: '11月', desktop: 803, mobile: 687 },
-  { month: '12月', desktop: 271, mobile: 198 }
-];
+/** 近 30 天创作趋势：按天资产计数，拆分 AI 生成 / 用户上传两个来源 */
 
 const chartConfig = {
-  desktop: {
-    label: '桌面端',
+  generated: {
+    label: 'AI 生成',
     color: 'var(--chart-1)'
   },
-  mobile: {
-    label: '移动端',
+  imported: {
+    label: '用户上传',
     color: 'var(--chart-2)'
   }
 } satisfies ChartConfig;
 
-export function AreaGraph() {
+interface AreaGraphProps {
+  dailyTrend: DailyAssetCount[];
+}
+
+/** YYYY-MM-DD → M/D（X 轴刻度紧凑展示） */
+function formatDayLabel(date: string): string {
+  const [, month, day] = date.split('-');
+  return `${Number(month)}/${Number(day)}`;
+}
+
+export function AreaGraph({ dailyTrend }: AreaGraphProps) {
+  const chartData = dailyTrend.map((item) => ({
+    day: item.date,
+    label: formatDayLabel(item.date),
+    generated: item.generated,
+    imported: item.imported
+  }));
+  const total = dailyTrend.reduce((sum, item) => sum + item.count, 0);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          点状面积图
-          <Badge variant='outline'>
-            <Icons.trendingUp />
-            -5.2%
-          </Badge>
-        </CardTitle>
-        <CardDescription>展示最近 6 个月的总访客数</CardDescription>
+        <CardTitle>近 30 天创作趋势</CardTitle>
+        <CardDescription>
+          {total > 0
+            ? `近 30 天共新增 ${total.toLocaleString('zh-CN')} 个资产`
+            : '近 30 天还没有新增资产'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig}>
           <AreaChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} strokeDasharray='3 3' />
             <XAxis
-              dataKey='month'
+              dataKey='label'
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              tickFormatter={(value) => value.slice(0, 3)}
+              interval='preserveStartEnd'
+              minTickGap={24}
             />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
             <defs>
               <DottedBackgroundPattern config={chartConfig} />
             </defs>
             <Area
-              dataKey='mobile'
+              dataKey='imported'
               type='natural'
-              fill='url(#dotted-background-pattern-mobile)'
+              fill='url(#dotted-background-pattern-imported)'
               fillOpacity={0.4}
-              stroke='var(--color-mobile)'
+              stroke='var(--color-imported)'
               stackId='a'
               strokeWidth={0.8}
             />
             <Area
-              dataKey='desktop'
+              dataKey='generated'
               type='natural'
-              fill='url(#dotted-background-pattern-desktop)'
+              fill='url(#dotted-background-pattern-generated)'
               fillOpacity={0.4}
-              stroke='var(--color-desktop)'
+              stroke='var(--color-generated)'
               stackId='a'
               strokeWidth={0.8}
             />

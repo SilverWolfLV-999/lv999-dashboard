@@ -19,6 +19,13 @@ function parseInteger(value: string | null): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** 仅接受 'true'/'false'；其他值视为未筛选 */
+function parseBoolean(value: string | null): boolean | undefined {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
 export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -31,6 +38,7 @@ export async function GET(request: Request) {
     limit: parseInteger(searchParams.get('limit')),
     search: searchParams.get('search') ?? undefined,
     kind: searchParams.get('kind') ?? undefined,
+    favorite: parseBoolean(searchParams.get('favorite')),
     sort: searchParams.get('sort') ?? undefined
   };
 

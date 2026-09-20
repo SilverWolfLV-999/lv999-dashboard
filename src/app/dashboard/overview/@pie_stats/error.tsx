@@ -20,7 +20,7 @@ export default function PieStatsError({ error, reset }: { error: Error; reset: (
 
   return (
     <StatsErrorAlert
-      message={`饼图统计加载失败：${error.message}`}
+      message={`类型分布加载失败：${error.message}`}
       action={
         <>
           <Button variant='outline' size='sm' onClick={retry} disabled={isPending}>

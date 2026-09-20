@@ -16,11 +16,23 @@ interface DesignEditorProps {
   assetId: string | null;
   initialTitle: string;
   initialDocument: DesignDocument;
+  /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
+  initialImageAssetId?: string | null;
 }
 
-export function DesignEditor({ assetId, initialTitle, initialDocument }: DesignEditorProps) {
+export function DesignEditor({
+  assetId,
+  initialTitle,
+  initialDocument,
+  initialImageAssetId
+}: DesignEditorProps) {
   return (
-    <EditorProvider assetId={assetId} initialTitle={initialTitle} initialDocument={initialDocument}>
+    <EditorProvider
+      assetId={assetId}
+      initialTitle={initialTitle}
+      initialDocument={initialDocument}
+      initialImageAssetId={initialImageAssetId}
+    >
       <div className='flex h-[calc(100svh-4rem)] min-w-0 flex-1 flex-col md:h-[calc(100svh-3.5rem)]'>
         <EditorToolbar />
         <div className='flex min-h-0 flex-1'>

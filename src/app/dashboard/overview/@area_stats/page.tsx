@@ -1,7 +1,9 @@
-import { delay } from '@/constants/mock-api';
+import { auth } from '@clerk/nextjs/server';
+import { getAssetStats } from '@/features/overview/api/service';
 import { AreaGraph } from '@/features/overview/components/area-graph';
 
 export default async function AreaStats() {
-  await delay(2000);
-  return <AreaGraph />;
+  const { userId } = await auth();
+  const stats = await getAssetStats(userId);
+  return <AreaGraph dailyTrend={stats.dailyTrend} />;
 }

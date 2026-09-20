@@ -2,10 +2,15 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useMutation } from '@tanstack/react-query';
 import type { Column, ColumnDef } from '@tanstack/react-table';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
 import { Icons } from '@/components/icons';
+import { cn } from '@/lib/utils';
+import { setAssetFavoriteMutation } from '../../../api/mutations';
 import { ASSET_KIND_META, ASSET_KINDS, getAssetKindMeta } from '../../../constants/kinds';
 import type { Asset } from '../../../api/types';
 import { formatBytes, formatDateTime } from '../../../lib/format';
@@ -43,7 +48,55 @@ function AssetTitleCell({ assetId, title }: { assetId: string; title: string }) 
   );
 }
 
+/** 行内收藏切换：星形图标按钮，乐观失效走 assetsRoot（列表重查后回填真实状态） */
+function FavoriteCell({ asset }: { asset: Asset }) {
+  const mutation = useMutation(setAssetFavoriteMutation);
+  return (
+    <button
+      type='button'
+      aria-label={asset.favorite ? '取消收藏' : '收藏'}
+      aria-pressed={asset.favorite}
+      disabled={mutation.isPending}
+      onClick={() =>
+        mutation.mutate(
+          { id: asset.id, favorite: !asset.favorite },
+          {
+            onSuccess: () => toast.success(asset.favorite ? '已取消收藏' : '已收藏'),
+            onError: () => toast.error('操作失败，请稍后重试')
+          }
+        )
+      }
+      className={cn(
+        'text-muted-foreground hover:text-foreground flex size-8 items-center justify-center rounded-md transition-colors disabled:opacity-50',
+        asset.favorite && 'text-amber-500 hover:text-amber-500'
+      )}
+    >
+      <Icons.star className={cn('size-4', asset.favorite && 'fill-current')} />
+    </button>
+  );
+}
+
 export const columns: ColumnDef<Asset>[] = [
+  {
+    id: 'select',
+    header: ({ table }) => (
+      <Checkbox
+        aria-label='全选'
+        checked={table.getIsAllPageRowsSelected()}
+        indeterminate={table.getIsSomePageRowsSelected()}
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label='选择行'
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false
+  },
   {
     id: 'title',
     accessorKey: 'title',
@@ -108,6 +161,14 @@ export const columns: ColumnDef<Asset>[] = [
         {formatDateTime(row.original.createdAt)}
       </span>
     )
+  },
+  {
+    id: 'favorite',
+    accessorKey: 'favorite',
+    enableSorting: false,
+    header: () => <span className='sr-only'>收藏</span>,
+    cell: ({ row }) => <FavoriteCell asset={row.original} />,
+    enableHiding: false
   },
   {
     id: 'actions',

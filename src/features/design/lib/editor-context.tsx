@@ -22,6 +22,7 @@ import { createDesignMutation, updateDesignMutation } from '../api/mutations';
 import type { DesignDocument, DesignObject } from '../api/types';
 import { ZOOM_MAX, ZOOM_MIN } from '../constants/canvas';
 import { useEditorReducer, type EditorAction, type ObjectPatch } from '../hooks/use-editor-reducer';
+import { assetRawUrl } from '../hooks/use-asset-image';
 import { createImageObject, createShapeObject, type Point } from './document';
 import { dataUrlToBase64, downloadDataURL, exportStageToDataURL } from './export';
 
@@ -85,6 +86,8 @@ interface EditorProviderProps {
   assetId: string | null;
   initialTitle: string;
   initialDocument: DesignDocument;
+  /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
+  initialImageAssetId?: string | null;
   children: ReactNode;
 }
 
@@ -92,6 +95,7 @@ export function EditorProvider({
   assetId,
   initialTitle,
   initialDocument,
+  initialImageAssetId,
   children
 }: EditorProviderProps) {
   const router = useRouter();
@@ -208,6 +212,25 @@ export function EditorProvider({
     },
     [dispatch, getViewportCenter]
   );
+
+  // 「在画布使用」预置图片：挂载后经同源 /raw 代理加载取自然尺寸，
+  // 复用 insertImage 按比例适配并居中插入（不自动保存，等用户操作）
+  const initialImageInsertedRef = useRef(false);
+  useEffect(() => {
+    if (!initialImageAssetId || initialImageInsertedRef.current) return;
+    initialImageInsertedRef.current = true;
+    const image = new window.Image();
+    image.addEventListener('load', () => {
+      insertImage(initialImageAssetId, {
+        width: image.naturalWidth,
+        height: image.naturalHeight
+      });
+    });
+    image.addEventListener('error', () => {
+      toast.error('预置图片加载失败，可在工具栏「插入图片」中重新选择');
+    });
+    image.src = assetRawUrl(initialImageAssetId);
+  }, [initialImageAssetId, insertImage]);
 
   const zoomBy = useCallback(
     (factor: number) => {

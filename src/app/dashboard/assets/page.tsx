@@ -16,7 +16,10 @@ export default async function AssetsPage(props: PageProps) {
   searchParamsCache.parse(searchParams);
 
   return (
-    <PageContainer pageTitle='我的资产' pageDescription='全部创作资产，可预览、下载与删除。'>
+    <PageContainer
+      pageTitle='我的资产'
+      pageDescription='全部创作资产：预览、下载、收藏，图片可继续修改或在画布使用，支持批量删除。'
+    >
       <AssetListingPage />
     </PageContainer>
   );

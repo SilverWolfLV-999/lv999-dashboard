@@ -1,0 +1,85 @@
+import { auth } from '@clerk/nextjs/server';
+import { apiError } from '@/lib/api-error';
+import { isUuid } from '@/lib/utils';
+import { checkRateLimit } from '@/features/agent/api/rate-limit';
+import { ImageEditError, editImageAssetCore } from '@/features/agent/api/image-edit';
+import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
+import { editImageRequestSchema } from '@/features/agent/api/types';
+
+export const runtime = 'nodejs';
+// I2I 同步生成实测 13-45s（上限 180s 超时），与 chat 路由同档
+export const maxDuration = 300;
+
+/** 图片编辑限流：I2I 是付费模型调用（≈0.20 元/次），20 次/分/用户 */
+const IMAGE_EDIT_RATE_LIMIT = 20;
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+
+type RouteContext = { params: Promise<{ id: string }> };
+
+/**
+ * 图片资产「继续修改」（直连 I2I，不经聊天）：
+ * 对源图片资产按指令生成派生资产（sourceAssetId 记录血缘），返回新资产 id。
+ * 核心流程与聊天内 editImageAsset 工具复用（features/agent/api/image-edit.ts）。
+ */
+export async function POST(request: Request, context: RouteContext) {
+  const { userId } = await auth();
+  if (!userId) {
+    return apiError(401, 'unauthorized', 'Unauthorized');
+  }
+  const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Asset not found');
+  }
+
+  // 限流与读 body 并行；按「限流 → 体积 → 解析 → 校验」顺序处理
+  const [allowed, rawBody] = await Promise.all([
+    checkRateLimit('image-edit', userId, IMAGE_EDIT_RATE_LIMIT, RATE_LIMIT_WINDOW_SECONDS),
+    request.text()
+  ]);
+  if (!allowed) {
+    return apiError(429, 'too_many_requests', 'Too many requests', {
+      'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS)
+    });
+  }
+  if (Buffer.byteLength(rawBody, 'utf8') > MAX_REQUEST_BYTES) {
+    return apiError(413, 'payload_too_large', 'Request body too large');
+  }
+
+  let rawJson: unknown;
+  try {
+    rawJson = JSON.parse(rawBody);
+  } catch {
+    return apiError(400, 'invalid_json', 'Invalid JSON body');
+  }
+
+  const parsed = editImageRequestSchema.safeParse(rawJson);
+  if (!parsed.success) {
+    return apiError(400, 'invalid_request', 'instruction is required (1..2000 chars)');
+  }
+  const { instruction, aspect } = parsed.data;
+  // schema 校验的是原始串；trim 后再次校验，拦截纯空白指令
+  const trimmedInstruction = instruction.trim();
+  if (trimmedInstruction.length === 0 || trimmedInstruction.length > 2000) {
+    return apiError(400, 'invalid_request', 'instruction is required (1..2000 chars)');
+  }
+
+  try {
+    const asset = await editImageAssetCore({
+      userId,
+      sourceAssetId: id,
+      instruction: trimmedInstruction,
+      aspect
+    });
+    return Response.json({ id: asset.id });
+  } catch (error) {
+    if (error instanceof ImageEditError) {
+      if (error.code === 'source_too_large') {
+        return apiError(413, 'payload_too_large', 'Source image exceeds 10MB edit limit');
+      }
+      return apiError(404, 'not_found', 'Source image asset not found');
+    }
+    // 生成/下载/转存失败（image-generation.ts 已映射为用户可读中文并记录日志）
+    console.error('[agent] direct image edit failed', { assetId: id, error });
+    return apiError(502, 'invalid_request', 'Image generation failed');
+  }
+}

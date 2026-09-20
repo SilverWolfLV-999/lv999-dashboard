@@ -19,6 +19,7 @@ export function buildAssetQuery(filters: AssetFilters): string {
   if (filters.limit) params.set('limit', String(filters.limit));
   if (filters.search) params.set('search', filters.search);
   if (filters.kind) params.set('kind', filters.kind);
+  if (filters.favorite !== undefined) params.set('favorite', String(filters.favorite));
   if (filters.sort) params.set('sort', filters.sort);
   return params.toString();
 }

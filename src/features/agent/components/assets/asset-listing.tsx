@@ -15,6 +15,7 @@ export default async function AssetListingPage() {
   const limit = searchParamsCache.get('perPage');
   const title = searchParamsCache.get('title');
   const kind = searchParamsCache.get('kind');
+  const favorite = searchParamsCache.get('favorite');
   const sort = searchParamsCache.get('sort');
 
   const filters: AssetFilters = {
@@ -22,6 +23,7 @@ export default async function AssetListingPage() {
     limit,
     ...(title && { search: title }),
     ...(kind && { kind }),
+    ...(favorite !== null && { favorite }),
     ...(sort && { sort })
   };
 

@@ -1,18 +1,15 @@
 import { ToolLoopAgent, isStepCount, tool, type InferUITools, type UIMessage } from 'ai';
 import { z } from 'zod';
-import { getSignedUrl } from '@/lib/oss';
 import { DEFAULT_MODEL, isModelKey } from '../constants/models';
 import { ASPECT_KEYS, ASPECT_PRESETS } from '../constants/image-models';
 import { resolveModel } from './provider';
 import { generateImage } from './image-generation';
-import { createAsset, createImageAsset, getAsset } from './service';
+import { editImageAssetCore } from './image-edit';
+import { createAsset, createImageAsset } from './service';
 import type { AssetKind } from './types';
 
 /** 单个资产的内容上限（字符数按 UTF-8 字节计算） */
 export const MAX_ASSET_SIZE_BYTES = 200 * 1024;
-
-/** 图像编辑（I2I）源图体积上限：百炼输入上限 10MB（低于入库 15MB 红线，编辑前预检拦截） */
-export const MAX_EDIT_SOURCE_BYTES = 10 * 1024 * 1024;
 
 const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，帮助用户产出高质量的内容作品。
 
@@ -154,36 +151,21 @@ export function editImageAssetTool(params: { userId: string; conversationId: str
     description: EDIT_IMAGE_ASSET_DESCRIPTION,
     inputSchema: editImageAssetInputSchema,
     execute: async ({ sourceAssetId, title, instruction, aspect }, { abortSignal }) => {
-      // 归属校验：源资产必须属于当前用户、为图片且已转入 OSS（文本资产不可编辑）
-      const source = await getAsset(params.userId, sourceAssetId);
-      if (!source || source.kind !== 'image' || !source.storageKey) {
-        throw new Error('找不到可修改的源图片资产（可能已被删除）。');
-      }
-      if (source.sizeBytes && source.sizeBytes > MAX_EDIT_SOURCE_BYTES) {
-        throw new Error('源图片体积超过编辑输入上限（10MB），无法修改。');
-      }
-      // 源图经短期签名 URL 直传百炼（公网可达；TTL 900s 覆盖生成全程）
-      const referenceImageUrl = await getSignedUrl(source.storageKey, 900);
-      const size = aspect ? ASPECT_PRESETS[aspect] : undefined;
-      const { imageBuffer, mime } = await generateImage({
-        prompt: instruction,
-        referenceImageUrl,
-        size,
-        signal: abortSignal
-      });
-      const asset = await createImageAsset({
+      // 核心流程（预检 → 签名 URL → I2I → 落库血缘）抽至 image-edit.ts，与直连端点复用；
+      // abortSignal 透传：停止时同步取消进行中的请求（已创建的百炼任务会自然完成，无副作用）
+      const asset = await editImageAssetCore({
         userId: params.userId,
-        conversationId: params.conversationId,
+        sourceAssetId,
+        instruction,
+        aspect,
         title,
-        prompt: instruction,
-        imageBuffer,
-        mime,
-        sourceAssetId
+        conversationId: params.conversationId,
+        signal: abortSignal
       });
       // 返回结构与 createImageAsset 对齐，复用对话内资产卡片渲染；sourceAssetId 供后续继续迭代追溯
       return {
         assetId: asset.id,
-        title,
+        title: asset.title,
         kind: 'image' as const,
         sizeBytes: asset.sizeBytes,
         sourceAssetId

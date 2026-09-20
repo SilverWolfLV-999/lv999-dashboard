@@ -9,82 +9,85 @@ import {
   ChartTooltip,
   ChartTooltipContent
 } from '@/components/ui/chart';
-import { Badge } from '@/components/ui/badge';
-import { Icons } from '@/components/icons';
+import type { AssetKindCount } from '../api/types';
 
-const chartData = [
-  { browser: 'chrome', visitors: 275, fill: 'var(--color-chrome)' },
-  { browser: 'safari', visitors: 200, fill: 'var(--color-safari)' },
-  { browser: 'firefox', visitors: 187, fill: 'var(--color-firefox)' },
-  { browser: 'edge', visitors: 173, fill: 'var(--color-edge)' },
-  { browser: 'other', visitors: 90, fill: 'var(--color-other)' }
-];
+/** 资产类型分布：各 kind 计数（数据来自 overview/api/service.ts 的 getAssetStats） */
 
 const chartConfig = {
-  visitors: {
-    label: '访客'
+  count: {
+    label: '资产数'
   },
-  chrome: {
-    label: 'Chrome',
+  markdown: {
+    label: 'Markdown',
     color: 'var(--chart-1)'
   },
-  safari: {
-    label: 'Safari',
+  html: {
+    label: 'HTML',
     color: 'var(--chart-2)'
   },
-  firefox: {
-    label: 'Firefox',
+  image: {
+    label: '图片',
     color: 'var(--chart-3)'
   },
-  edge: {
-    label: 'Edge',
+  design: {
+    label: '设计',
     color: 'var(--chart-4)'
-  },
-  other: {
-    label: '其他',
-    color: 'var(--chart-5)'
   }
 } satisfies ChartConfig;
 
-export function PieGraph() {
+interface PieGraphProps {
+  kindCounts: AssetKindCount[];
+}
+
+export function PieGraph({ kindCounts }: PieGraphProps) {
+  const chartData = kindCounts
+    .filter((item) => item.count > 0)
+    .map((item) => ({
+      kind: item.kind,
+      count: item.count,
+      fill: `var(--color-${item.kind})`
+    }));
+  const total = kindCounts.reduce((sum, item) => sum + item.count, 0);
+
   return (
     <Card className='flex h-full flex-col'>
       <CardHeader className='items-center pb-0'>
-        <CardTitle>
-          饼图
-          <Badge variant='outline'>
-            <Icons.trendingUp />
-            +5.2%
-          </Badge>
-        </CardTitle>
-        <CardDescription>2024 年 1 月 - 6 月</CardDescription>
+        <CardTitle>资产类型分布</CardTitle>
+        <CardDescription>共 {total.toLocaleString('zh-CN')} 个资产，按类型统计</CardDescription>
       </CardHeader>
       <CardContent className='flex flex-1 items-center justify-center pb-0'>
-        <ChartContainer
-          config={chartConfig}
-          className='[&_.recharts-text]:fill-background mx-auto aspect-square max-h-[300px] min-h-[250px]'
-        >
-          <PieChart>
-            <ChartTooltip content={<ChartTooltipContent nameKey='visitors' hideLabel />} />
-            <Pie
-              data={chartData}
-              innerRadius={30}
-              dataKey='visitors'
-              radius={10}
-              cornerRadius={8}
-              paddingAngle={4}
-            >
-              <LabelList
-                dataKey='visitors'
-                stroke='none'
-                fontSize={12}
-                fontWeight={500}
-                fill='currentColor'
-                formatter={(value) => String(value ?? '')}
-              />
-            </Pie>
-          </PieChart>
-        </ChartContainer>
+        {chartData.length === 0 ? (
+          <div className='text-muted-foreground flex aspect-square max-h-[300px] min-h-[250px] w-full items-center justify-center text-sm'>
+            还没有创作资产，先去 Agent 创作或设计画布产出作品吧。
+          </div>
+        ) : (
+          <ChartContainer
+            config={chartConfig}
+            className='[&_.recharts-text]:fill-background mx-auto aspect-square max-h-[300px] min-h-[250px]'
+          >
+            <PieChart>
+              <ChartTooltip content={<ChartTooltipContent nameKey='kind' hideLabel />} />
+              <Pie
+                data={chartData}
+                innerRadius={30}
+                dataKey='count'
+                nameKey='kind'
+                radius={10}
+                cornerRadius={8}
+                paddingAngle={4}
+              >
+                <LabelList
+                  dataKey='count'
+                  stroke='none'
+                  fontSize={12}
+                  fontWeight={500}
+                  fill='currentColor'
+                  formatter={(value) => String(value ?? '')}
+                />
+              </Pie>
+            </PieChart>
+          </ChartContainer>
+        )}
       </CardContent>
     </Card>
   );

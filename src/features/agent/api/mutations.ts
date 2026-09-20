@@ -2,7 +2,12 @@ import { mutationOptions } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { getQueryClient } from '@/lib/query-client';
 import { agentKeys } from './queries';
-import type { Conversation, CreateConversationPayload, UpdateConversationPayload } from './types';
+import type {
+  Conversation,
+  CreateConversationPayload,
+  EditImageRequest,
+  UpdateConversationPayload
+} from './types';
 
 /** 会话域失效：仅会话列表（标题/时间戳）变化，不连带资产查询 */
 function invalidateConversations(): void {
@@ -42,5 +47,35 @@ export const deleteConversationMutation = mutationOptions({
 export const deleteAssetMutation = mutationOptions({
   mutationFn: (id: string) =>
     apiClient<{ success: boolean }>(`/agent/assets/${id}`, { method: 'DELETE' }),
+  onSuccess: invalidateAssets
+});
+
+/** 图片「继续修改」（直连 I2I）：生成可能耗时 10-60s，成功后失效资产列表/详情 */
+export const editImageAssetMutation = mutationOptions({
+  mutationFn: ({ id, values }: { id: string; values: EditImageRequest }) =>
+    apiClient<{ id: string }>(`/agent/assets/${id}/edit`, {
+      method: 'POST',
+      body: JSON.stringify(values)
+    }),
+  onSuccess: invalidateAssets
+});
+
+/** 收藏/取消收藏（任意 kind） */
+export const setAssetFavoriteMutation = mutationOptions({
+  mutationFn: ({ id, favorite }: { id: string; favorite: boolean }) =>
+    apiClient<{ success: boolean; favorite: boolean }>(`/agent/assets/${id}/favorite`, {
+      method: 'POST',
+      body: JSON.stringify({ favorite })
+    }),
+  onSuccess: invalidateAssets
+});
+
+/** 批量删除（单次上限 100 个；服务端逐个校验归属并清理 OSS 对象） */
+export const batchDeleteAssetsMutation = mutationOptions({
+  mutationFn: (ids: string[]) =>
+    apiClient<{ success: boolean; deleted: number }>('/agent/assets/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    }),
   onSuccess: invalidateAssets
 });

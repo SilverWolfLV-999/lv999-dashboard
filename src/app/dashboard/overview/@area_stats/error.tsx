@@ -20,7 +20,7 @@ export default function AreaStatsError({ error, reset }: { error: Error; reset: 
 
   return (
     <StatsErrorAlert
-      message={`面积图统计加载失败：${error.message}`}
+      message={`创作趋势加载失败：${error.message}`}
       action={
         <>
           <Button variant='outline' size='sm' onClick={retry} disabled={isPending}>

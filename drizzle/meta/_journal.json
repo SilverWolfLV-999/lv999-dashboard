@@ -15,6 +15,13 @@
       "when": 1789894799412,
       "tag": "0001_skinny_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789907780932,
+      "tag": "0002_crazy_lake",
+      "breakpoints": true
     }
   ]
 }

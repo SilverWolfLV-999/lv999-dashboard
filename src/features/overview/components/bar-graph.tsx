@@ -9,41 +9,60 @@ import {
   ChartTooltip,
   ChartTooltipContent
 } from '@/components/ui/chart';
-import { Badge } from '@/components/ui/badge';
-import { Icons } from '@/components/icons';
+import type { DailyAssetCount } from '../api/types';
 
-const chartData = [
-  { month: '1月', desktop: 186, mobile: 80 },
-  { month: '2月', desktop: 305, mobile: 200 },
-  { month: '3月', desktop: 237, mobile: 120 },
-  { month: '4月', desktop: 73, mobile: 190 },
-  { month: '5月', desktop: 209, mobile: 130 },
-  { month: '6月', desktop: 214, mobile: 140 }
-];
+/** 创作量周对比：近 30 天按周分组（从最早一天起每 7 天一档），对比 AI 生成 / 用户上传 */
 
 const chartConfig = {
-  desktop: {
-    label: '桌面端',
+  generated: {
+    label: 'AI 生成',
     color: 'var(--chart-1)'
   },
-  mobile: {
-    label: '移动端',
+  imported: {
+    label: '用户上传',
     color: 'var(--chart-2)'
   }
 } satisfies ChartConfig;
 
-export function BarGraph() {
+interface BarGraphProps {
+  dailyTrend: DailyAssetCount[];
+}
+
+interface WeekBucket {
+  label: string;
+  generated: number;
+  imported: number;
+}
+
+/** 逐日趋势（升序）→ 周分组；不足 7 天的尾档照常展示 */
+function buildWeekBuckets(dailyTrend: DailyAssetCount[]): WeekBucket[] {
+  const buckets: WeekBucket[] = [];
+  dailyTrend.forEach((item, index) => {
+    const weekIndex = Math.floor(index / 7);
+    let bucket = buckets[weekIndex];
+    if (!bucket) {
+      bucket = { label: `第${weekIndex + 1}周`, generated: 0, imported: 0 };
+      buckets.push(bucket);
+    }
+    bucket.generated += item.generated;
+    bucket.imported += item.imported;
+  });
+  return buckets;
+}
+
+export function BarGraph({ dailyTrend }: BarGraphProps) {
+  const chartData = buildWeekBuckets(dailyTrend);
+  const total = chartData.reduce((sum, item) => sum + item.generated + item.imported, 0);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          柱状图 - 多组
-          <Badge variant='outline'>
-            <Icons.trendingDown />
-            -5.2%
-          </Badge>
-        </CardTitle>
-        <CardDescription>2025 年 1 月 - 6 月</CardDescription>
+        <CardTitle>创作量周对比</CardTitle>
+        <CardDescription>
+          {total > 0
+            ? `近 30 天按周对比 AI 生成与用户上传（共 ${total.toLocaleString('zh-CN')} 个）`
+            : '近 30 天还没有新增资产'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig}>
@@ -58,27 +77,21 @@ export function BarGraph() {
             <defs>
               <DottedBackgroundPattern />
             </defs>
-            <XAxis
-              dataKey='month'
-              tickLine={false}
-              tickMargin={10}
-              axisLine={false}
-              tickFormatter={(value) => value.slice(0, 3)}
-            />
+            <XAxis dataKey='label' tickLine={false} tickMargin={10} axisLine={false} />
             <ChartTooltip
               cursor={false}
               content={<ChartTooltipContent indicator='dashed' hideLabel />}
             />
             <Bar
-              dataKey='desktop'
+              dataKey='generated'
               color='var(--chart-1)'
-              fill='var(--color-desktop)'
+              fill='var(--color-generated)'
               shape={<CustomHatchedBar isHatched={false} />}
               radius={4}
             />
             <Bar
-              dataKey='mobile'
-              fill='var(--color-mobile)'
+              dataKey='imported'
+              fill='var(--color-imported)'
               shape={<CustomHatchedBar />}
               radius={4}
             />

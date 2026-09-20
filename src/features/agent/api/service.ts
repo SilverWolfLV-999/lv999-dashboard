@@ -56,6 +56,7 @@ function toAsset(row: AssetRow): Asset {
     kind: row.kind as AssetKind,
     title: row.title,
     status: row.status,
+    favorite: row.favorite,
     mime: row.mime,
     sizeBytes: row.sizeBytes,
     createdAt: row.createdAt.toISOString(),
@@ -356,7 +357,8 @@ export async function createAsset(params: {
  */
 export async function createImageAsset(params: {
   userId: string;
-  conversationId: string;
+  /** 归属会话（可空）：聊天内生成传入；资产行「继续修改」直连编辑无会话 */
+  conversationId: string | null;
   title: string;
   prompt: string;
   imageBuffer: Buffer;
@@ -510,6 +512,9 @@ export async function listAssets(userId: string, filters: AssetFilters): Promise
   if (kinds && kinds.length > 0) {
     conditions.push(inArray(assets.kind, kinds));
   }
+  if (filters.favorite !== undefined) {
+    conditions.push(eq(assets.favorite, filters.favorite));
+  }
   const where = and(...conditions);
 
   // count 与分页数据互不依赖，并行执行（async-parallel）
@@ -581,4 +586,19 @@ export async function deleteAsset(userId: string, assetId: string): Promise<bool
     }
   }
   return true;
+}
+
+/** 收藏/取消收藏（任意 kind）：按所有权更新，返回是否命中 */
+export async function setAssetFavorite(
+  userId: string,
+  assetId: string,
+  favorite: boolean
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db
+    .update(assets)
+    .set({ favorite, updatedAt: new Date() })
+    .where(and(eq(assets.id, assetId), eq(assets.userId, userId)))
+    .returning({ id: assets.id });
+  return rows.length > 0;
 }

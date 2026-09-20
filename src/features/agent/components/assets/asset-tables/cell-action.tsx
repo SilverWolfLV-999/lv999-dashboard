@@ -18,6 +18,7 @@ import {
 import { Icons } from '@/components/icons';
 import { deleteAssetMutation } from '../../../api/mutations';
 import { downloadAsset } from '../../../lib/asset-download';
+import { ImageEditDialog } from '../image-edit-dialog';
 import type { Asset } from '../../../api/types';
 
 /**
@@ -37,11 +38,15 @@ export function CellAction({ data }: CellActionProps) {
   const router = useRouter();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
+  // 预览目标资产：默认当前行；「继续修改」成功后指向新派生资产
+  const [previewAssetId, setPreviewAssetId] = useState(data.id);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const deleteMutation = useMutation(deleteAssetMutation);
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
-  const openPreview = () => {
+  const openPreview = (assetId: string = data.id) => {
+    setPreviewAssetId(assetId);
     setPreviewMounted(true);
     setPreviewOpen(true);
   };
@@ -49,7 +54,19 @@ export function CellAction({ data }: CellActionProps) {
   return (
     <>
       {previewMounted && (
-        <AssetPreviewDialog assetId={data.id} open={previewOpen} onOpenChange={setPreviewOpen} />
+        <AssetPreviewDialog
+          assetId={previewAssetId}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+        />
+      )}
+      {data.kind === 'image' && (
+        <ImageEditDialog
+          asset={data}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          onSuccess={(newAssetId) => openPreview(newAssetId)}
+        />
       )}
       <AlertModal
         isOpen={deleteOpen}
@@ -80,7 +97,19 @@ export function CellAction({ data }: CellActionProps) {
                 <Icons.edit className='mr-2 h-4 w-4' /> 编辑
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={openPreview}>
+            {data.kind === 'image' && (
+              <>
+                <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                  <Icons.sparkles className='mr-2 h-4 w-4' /> 继续修改
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => router.push(`/dashboard/design?imageAssetId=${data.id}`)}
+                >
+                  <Icons.palette className='mr-2 h-4 w-4' /> 在画布使用
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuItem onClick={() => openPreview()}>
               <Icons.eye className='mr-2 h-4 w-4' /> 预览
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void downloadAsset(data.id)}>

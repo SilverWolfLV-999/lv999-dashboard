@@ -175,6 +175,7 @@ export const Icons = {
   download: IconDownload,
   upload: IconUpload,
   share: IconShare,
+  star: IconStar,
   login: IconLogin,
   logout: IconLogout,
   gripVertical: IconGripVertical,

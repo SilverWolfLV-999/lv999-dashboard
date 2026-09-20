@@ -1,6 +1,7 @@
 import {
   createSearchParamsCache,
   createSerializer,
+  parseAsBoolean,
   parseAsInteger,
   parseAsString
 } from 'nuqs/server';
@@ -10,6 +11,7 @@ export const searchParams = {
   perPage: parseAsInteger.withDefault(10),
   title: parseAsString,
   kind: parseAsString,
+  favorite: parseAsBoolean,
   sort: parseAsString
   // advanced filter
   // filters: getFiltersStateParser().withDefault([]),

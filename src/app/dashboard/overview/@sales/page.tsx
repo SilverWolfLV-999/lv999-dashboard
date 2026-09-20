@@ -1,7 +1,9 @@
-import { delay } from '@/constants/mock-api';
-import { RecentSales } from '@/features/overview/components/recent-sales';
+import { auth } from '@clerk/nextjs/server';
+import { getAssetStats } from '@/features/overview/api/service';
+import { RecentCreations } from '@/features/overview/components/recent-sales';
 
 export default async function Sales() {
-  await delay(3000);
-  return <RecentSales />;
+  const { userId } = await auth();
+  const stats = await getAssetStats(userId);
+  return <RecentCreations items={stats.recentAssets} />;
 }

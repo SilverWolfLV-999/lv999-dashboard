@@ -1,7 +1,9 @@
-import { delay } from '@/constants/mock-api';
+import { auth } from '@clerk/nextjs/server';
+import { getAssetStats } from '@/features/overview/api/service';
 import { PieGraph } from '@/features/overview/components/pie-graph';
 
 export default async function Stats() {
-  await delay(1000);
-  return <PieGraph />;
+  const { userId } = await auth();
+  const stats = await getAssetStats(userId);
+  return <PieGraph kindCounts={stats.kindCounts} />;
 }

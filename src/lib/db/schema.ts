@@ -1,4 +1,5 @@
 import {
+  boolean,
   type AnyPgColumn,
   index,
   integer,
@@ -64,6 +65,8 @@ export const assets = pgTable(
     kind: text('kind').notNull(),
     title: text('title').notNull(),
     status: text('status').notNull().default('ready'),
+    /** 用户收藏标记（任意 kind 可收藏；列表支持「仅看收藏」筛选） */
+    favorite: boolean('favorite').notNull().default(false),
     content: text('content'),
     storageKey: text('storage_key'),
     mime: text('mime'),

@@ -16,6 +16,8 @@ interface DesignEditorIslandProps {
   assetId: string | null;
   initialTitle: string;
   initialDocument: DesignDocument;
+  /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
+  initialImageAssetId?: string | null;
 }
 
 export function DesignEditorIsland(props: DesignEditorIslandProps) {
