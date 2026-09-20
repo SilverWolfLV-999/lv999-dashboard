@@ -2,7 +2,7 @@
 
 > **LV999** —— lv = level。功能拉满、什么都有、完全体的管理后台。
 
-一个全功能的管理后台仪表盘：认证、多租户、权限、数据表格、表单、图表、主题……全部端到端可用。不是静态演示，而是一个能直接长出真实业务的地基。
+一个全功能的管理后台仪表盘：认证、多租户、权限、数据表格、表单、图表、主题……全部端到端可用。不是静态演示，而是一个能直接长出真实业务的地基——目前已在其上长出一个生产级的 **AI Agent 创作模块**（对话创作、文生图 / 图生图、资产沉淀）。
 
 ![LV999 Dashboard 预览](./public/lv999-dashboard.png)
 
@@ -12,10 +12,13 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 
 - **功能全部可运行**：数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证与组织端到端打通。
 - **工程模式生产级**：数据层遵循 TanStack Query 官方 SSR 模式，按 feature 组织模块，每个模块的 `api/service.ts` 是接入真实后端时唯一需要替换的文件。
-- **开箱即用**：默认内置 Mock 数据，配好 Clerk 密钥即可跑通全部流程。
+- **AI Agent 创作模块已落地**：自然语言对话 → 生成 Markdown / HTML / 图片作品并沉淀为可管理的资产；已接入真实后端（PostgreSQL + 对象存储 + Redis + 大模型），非 Mock，详见 [docs/agent.md](./docs/agent.md)。
+- **开箱即用**：后台骨架内置 Mock 数据，配好 Clerk 密钥即可跑通；Agent 创作模块另需数据库 / 模型 / 存储 / Redis 配置（见 [docs/agent.md](./docs/agent.md)）。
 
 ## 功能特性
 
+- **AI Agent 创作**：自然语言对话驱动的内容创作工作台（`ToolLoopAgent`）；可生成 Markdown / HTML 文本作品与文生图 / 图生图（I2I）图片；基于 `resumable-stream` 的可恢复 SSE 流（刷新 / 切回自动重连），支持跨实例停止生成
+- **我的资产**：Agent 产出统一沉淀为可管理资产；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除，图片经 OSS 签名 URL 访问
 - **总览仪表盘**：统计卡片 + Recharts 图表；基于并行路由（Parallel Routes），每个区块拥有独立的加载与错误状态
 - **数据表格**：服务端预取 + 客户端查询缓存 + 水合（HydrationBoundary），搜索 / 筛选 / 排序 / 分页与 URL 同步（nuqs），`shallow: true` 让交互零 RSC 往返
 - **表单体系**：TanStack Form + Zod；可复用字段组件、多步表单、对话框 / 抽屉表单，提交后自动失效相关查询缓存
@@ -35,6 +38,10 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | UI 组件 | shadcn/ui（Base UI primitives） |
 | 样式 | Tailwind CSS v4 |
 | 认证 / 组织 | Clerk |
+| AI / Agent | AI SDK v7（`ai` + `@ai-sdk/alibaba` / `@ai-sdk/openai-compatible`），百炼（阿里云 Model Studio） |
+| 数据库 / ORM | PostgreSQL（阿里云 RDS） + Drizzle ORM |
+| 对象存储 | 阿里云 OSS（图片等二进制资产） |
+| 缓存 / 流恢复 | Redis（resumable-stream 与停止信号 / 限流） |
 | 数据请求 | TanStack Query v5（SSR + Suspense） |
 | 数据表格 | TanStack Table v8 |
 | 表单 | TanStack Form + Zod v4 |
@@ -49,6 +56,9 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | 路由 | 说明 |
 | --- | --- |
 | `/dashboard/overview` | 总览：统计卡片 + 图表（并行路由独立加载） |
+| `/dashboard/agent` | Agent 创作：新建会话与对话创作入口 |
+| `/dashboard/agent/[conversationId]` | Agent 会话：可恢复流式对话、工具调用与对话内资产卡片 |
+| `/dashboard/assets` | 我的资产：资产表格（筛选 / 搜索 / 预览 / 下载 / 删除） |
 | `/dashboard/workspaces` | 工作区管理：Clerk `<OrganizationList />` |
 | `/dashboard/workspaces/team` | 团队管理：Clerk `<OrganizationProfile />`（需激活组织） |
 | `/dashboard/profile` | 个人资料与安全设置（Clerk 账户管理） |
@@ -80,8 +90,12 @@ bun run dev
 | `NEXT_PUBLIC_APP_URL` | 应用公开地址（用于 metadataBase，本地为 `http://localhost:3000`） |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` 等 | 登录 / 注册与重定向地址（默认值已够用） |
 | `BUILD_STANDALONE` | Docker / 自托管时设为 `"true"`，启用 standalone 输出 |
+| `DATABASE_URL` | PostgreSQL 连接串（Agent 模块） |
+| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key（对话与图片模型） |
+| `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS（图片等二进制资产） |
+| `REDIS_URL` | Redis 连接串（流恢复 / 停止信号 / 限流，需 pub/sub） |
 
-完整变量说明见 `env.example.txt`；Clerk 的完整配置（Organizations 等）见 [docs/clerk_setup.md](./docs/clerk_setup.md)。
+后台骨架仅需 Clerk 密钥即可运行；`DATABASE_URL` 及之后的变量仅 Agent 创作模块需要。完整变量说明见 `env.example.txt`；Clerk 的完整配置（Organizations 等）见 [docs/clerk_setup.md](./docs/clerk_setup.md)；Agent 模块的完整配置与架构见 [docs/agent.md](./docs/agent.md)。
 
 ### 常用命令
 
@@ -102,16 +116,18 @@ src/
 │   ├── auth/               # 登录 / 注册页
 │   ├── dashboard/          # 后台路由
 │   │   ├── overview/       # 总览（并行路由：@area_stats、@bar_stats、@pie_stats、@sales）
+│   │   ├── agent/          # Agent 创作（会话列表 + [conversationId] 会话页）
+│   │   ├── assets/         # 我的资产（资产表格）
 │   │   ├── workspaces/     # 工作区与团队
 │   │   └── profile/        # 个人资料
-│   └── api/                # Route Handlers（如 Agent 模块后端接口）
+│   └── api/agent/          # Route Handlers：chat（SSE 流）/ conversations / assets
 ├── components/
 │   ├── ui/                 # shadcn/ui 组件库
 │   ├── layout/             # 布局（侧边栏、顶栏、Infobar 等）
 │   ├── forms/              # 表单字段组件（Field anatomy）
 │   ├── themes/             # 主题系统
 │   └── kbar/               # ⌘K 命令面板
-├── features/               # 按功能划分的模块
+├── features/               # 按功能划分的模块（agent、auth、overview、profile）
 │   └── <name>/
 │       ├── api/            # types.ts → service.ts → queries.ts
 │       ├── components/
@@ -120,7 +136,8 @@ src/
 ├── config/                 # 导航（含 RBAC）、Infobar、表格配置
 ├── constants/              # Mock 数据
 ├── hooks/                  # 自定义 hooks
-├── lib/                    # 工具（query-client、searchparams、api-client 等）
+├── lib/                    # 工具（query-client、searchparams、api-client、oss、redis 等）
+│   └── db/                 # Drizzle schema 与连接（getDb）
 ├── styles/                 # 全局样式与主题 CSS
 └── types/                  # 类型定义
 ```
@@ -142,6 +159,10 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 ```
 
 支持多种后端接入方式：Server Actions + ORM、Route Handlers + ORM、BFF 代理（Laravel / Go 等）、直连外部 API。`src/app/api/` 下的 Route Handlers 与 `src/lib/api-client.ts` 已就绪。
+
+### AI Agent 创作模块
+
+自然语言 → AI SDK v7 `ToolLoopAgent` → Markdown / HTML / 图片作品，统一沉淀为可管理资产。已接入真实后端：PostgreSQL + Drizzle（`conversations` / `messages` / `assets` 三表）、阿里云 OSS（图片二进制）、Redis（可恢复流与停止信号 / 限流）、百炼大模型。完整架构、数据模型、流式与停止机制、模型注册表与 API 契约见 [docs/agent.md](./docs/agent.md)。
 
 ### URL 状态：nuqs
 
@@ -169,7 +190,8 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 ## Roadmap
 
 - [x] 完整后台骨架：认证 / 多租户 / RBAC / 数据表格 / 表单 / 主题
-- [ ] 接入真实后端数据（替换各 feature 的 `api/service.ts`）
+- [x] AI Agent 创作模块：对话创作、文生图 / 图生图、资产沉淀，已接入真实后端（PostgreSQL + OSS + Redis + 百炼）
+- [ ] 视频产物（Phase 3：schema 与 OSS 已预留）
 - [ ] 替换预览截图与 OG 图（当前为 AI 生成的宣传图，后期将替换为真实界面截图）
 - [ ] 按需扩展业务模块
 
