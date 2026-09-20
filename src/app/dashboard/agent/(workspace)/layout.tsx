@@ -14,11 +14,11 @@ export default async function AgentWorkspaceLayout({ children }: { children: Rea
   if (!userId) return null;
 
   const queryClient = getQueryClient();
-  // 注意：预取数据的结构必须与客户端 queryFn（ConversationsResponse）一致，
+  // 注意：预取数据的结构必须与客户端 queryFn（ConversationsResponse = conversations + assetCounts）一致，
   // 否则水合后的 useSuspenseQuery 会拿到错误形状的数据。
   void queryClient.prefetchQuery({
     queryKey: agentKeys.conversations(),
-    queryFn: async () => ({ conversations: await listConversations(userId) })
+    queryFn: () => listConversations(userId)
   });
 
   // 根节点必须带 flex-1：dashboard 外壳的 InfobarProvider 用 flex 行包裹页面内容，

@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
 import { agentKeys } from '../../api/queries';
 import type { Conversation } from '../../api/types';
-import { DEFAULT_MODEL, getModelLabel } from '../../constants/models';
+import { ConversationDrawer } from '../conversations/conversation-sidebar';
+import { DEFAULT_MODEL } from '../../constants/models';
 import { buildAssetReferenceText, type ReferencedAsset } from '../../lib/asset-reference';
 import {
   clearPendingFirstMessage,
@@ -151,14 +152,16 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   return (
     <div className='flex h-full min-h-0 flex-col'>
       <div className='flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4'>
-        <h1 className='truncate text-sm font-medium'>{conversation?.title ?? '新会话'}</h1>
-        <span className='text-muted-foreground hidden text-xs sm:block'>
-          当前模型：{getModelLabel(model)}
-        </span>
+        <div className='flex min-w-0 items-center gap-1.5'>
+          {/* 窄屏（<lg）侧边栏隐藏时的会话管理入口 */}
+          <ConversationDrawer />
+          <h1 className='truncate text-sm font-medium'>{conversation?.title ?? '新会话'}</h1>
+        </div>
       </div>
 
       <div className='min-h-0 flex-1 overflow-y-auto'>
-        <div className='mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6'>
+        {/* min-h-full：消息不足一屏时容器仍撑满滚动区高度，空态得以真正垂直居中 */}
+        <div className='mx-auto flex min-h-full w-full max-w-3xl flex-col gap-6 px-4 py-6'>
           {messages.length === 0 ? (
             <ChatEmptyState onPick={setInput} />
           ) : (

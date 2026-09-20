@@ -60,6 +60,14 @@ export function ChatComposer({
     setPickerOpen(true);
   };
 
+  // 已选引用但还没输入时，用 placeholder 引导下一步（否则发送禁用会让人以为按钮坏了）
+  const placeholder =
+    referencedAssets.length > 0
+      ? `想基于《${referencedAssets[0].title.replace(/\s+/g, ' ').trim()}》${
+          referencedAssets.length > 1 ? `等 ${referencedAssets.length} 个资产` : ''
+        }做什么？`
+      : '描述你的创作需求…（Enter 发送，Shift+Enter 换行）';
+
   return (
     <div className='shrink-0 border-t'>
       <div className='mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-3'>
@@ -92,7 +100,7 @@ export function ChatComposer({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder='描述你的创作需求…（Enter 发送，Shift+Enter 换行）'
+          placeholder={placeholder}
           rows={2}
           className='max-h-40 min-h-[3.25rem] resize-none'
         />

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Icons } from '@/components/icons';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,41 @@ export function ConversationSidebar() {
         </Suspense>
       </div>
     </div>
+  );
+}
+
+/**
+ * 窄屏（<lg）会话抽屉：桌面侧边栏隐藏时的唯一会话管理入口（切换/新建/重命名/删除）。
+ * 路由变化（切换或新建会话）后自动收起；列表查询与桌面侧边栏共用同一缓存，打开即命中。
+ */
+export function ConversationDrawer() {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
+        render={
+          <Button variant='ghost' size='icon-sm' className='lg:hidden' aria-label='会话列表' />
+        }
+      >
+        <Icons.panelLeft className='size-4' />
+      </SheetTrigger>
+      <SheetContent side='left' className='gap-0 p-0'>
+        <SheetHeader className='border-b px-4 py-3'>
+          <SheetTitle>会话</SheetTitle>
+        </SheetHeader>
+        <div className='min-h-0 flex-1'>
+          <Suspense fallback={<SidebarSkeleton />}>
+            <ConversationSidebar />
+          </Suspense>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -113,6 +149,7 @@ function ConversationList() {
         )}
         {data.conversations.map((conversation) => {
           const active = pathname === `/dashboard/agent/${conversation.id}`;
+          const assetCount = data.assetCounts[conversation.id] ?? 0;
           return (
             <div
               key={conversation.id}
@@ -127,9 +164,24 @@ function ConversationList() {
               >
                 {conversation.title}
               </Link>
+              {assetCount > 0 && (
+                <span
+                  className='text-muted-foreground shrink-0 pr-1 text-xs tabular-nums'
+                  title={`产出 ${assetCount} 个资产`}
+                >
+                  {assetCount}
+                </span>
+              )}
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger
-                  render={<Button variant='ghost' size='icon-sm' className='mr-1' />}
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      /* 桌面端悬停/键盘聚焦/菜单展开时才显形（克制的列表噪声）；窄屏无 hover，常驻 */
+                      className='mr-1 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:group-has-[[aria-expanded="true"]]:opacity-100'
+                    />
+                  }
                 >
                   <span className='sr-only'>会话操作</span>
                   <Icons.ellipsis className='size-4' />

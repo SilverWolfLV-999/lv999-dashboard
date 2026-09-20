@@ -1,6 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { UIMessage } from 'ai';
-import { and, asc, count, desc, eq, gt, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  sql,
+  type SQL
+} from 'drizzle-orm';
 import { cache } from 'react';
 import { getDb } from '@/lib/db';
 import { assets, conversations, messages } from '@/lib/db/schema';
@@ -15,7 +27,8 @@ import type {
   AssetsResponse,
   AssetKind,
   ChatMessage,
-  Conversation
+  Conversation,
+  ConversationsResponse
 } from './types';
 
 /**
@@ -70,15 +83,31 @@ function toAsset(row: AssetRow): Asset {
 // Conversations
 // ---------------------------------------------------------------------------
 
-export async function listConversations(userId: string): Promise<Conversation[]> {
+/**
+ * 会话列表 + 每会话资产数：列表与分组计数互不依赖，并行查询；
+ * 计数只统计仍挂在会话下的资产（conversationId 非空），一次 group by 拿全。
+ */
+export async function listConversations(userId: string): Promise<ConversationsResponse> {
   const db = getDb();
-  const rows = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.userId, userId))
-    .orderBy(desc(conversations.updatedAt))
-    .limit(50);
-  return rows.map(toConversation);
+  const [rows, countRows] = await Promise.all([
+    db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.userId, userId))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(50),
+    db
+      .select({ conversationId: assets.conversationId, total: count() })
+      .from(assets)
+      .where(and(eq(assets.userId, userId), isNotNull(assets.conversationId)))
+      .groupBy(assets.conversationId)
+  ]);
+
+  const assetCounts: Record<string, number> = {};
+  for (const row of countRows) {
+    if (row.conversationId) assetCounts[row.conversationId] = Number(row.total);
+  }
+  return { conversations: rows.map(toConversation), assetCounts };
 }
 
 /**

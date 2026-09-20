@@ -10,8 +10,9 @@ export async function GET() {
   if (!userId) {
     return apiError(401, 'unauthorized', 'Unauthorized');
   }
-  const conversations = await listConversations(userId);
-  return Response.json({ conversations });
+  // 直接返回 ConversationsResponse（conversations + assetCounts），与客户端 queryFn 形状一致
+  const result = await listConversations(userId);
+  return Response.json(result);
 }
 
 export async function POST(request: Request) {

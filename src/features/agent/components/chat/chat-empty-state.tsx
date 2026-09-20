@@ -1,5 +1,6 @@
 'use client';
 
+import { useQuery } from '@tanstack/react-query';
 import {
   Empty,
   EmptyContent,
@@ -9,6 +10,7 @@ import {
   EmptyTitle
 } from '@/components/ui/empty';
 import { Icons } from '@/components/icons';
+import { assetsQueryOptions } from '../../api/queries';
 
 const EXAMPLES = [
   '写一篇介绍杭州秋日漫步路线的小红书文案，语气轻快，保存为 Markdown',
@@ -17,22 +19,35 @@ const EXAMPLES = [
   '做一个「星空观测入门指南」的单页 HTML 落地页，包含样式与简单交互'
 ];
 
+/** 复用示例：仅在资产库非空时展示，避免新用户首 run 点进「空库」的挫败体验 */
+const REUSE_EXAMPLE = '看看我的资产库里有哪些作品，挑一个继续创作';
+
 export function ChatEmptyState({ onPick }: { onPick: (text: string) => void }) {
+  // 只取 total 判断库是否为空；与资产页/引用选择器共用 assets 缓存域，产出资产后自动失效刷新
+  const { data } = useQuery({
+    ...assetsQueryOptions({ page: 1, limit: 1 }),
+    staleTime: 60_000
+  });
+  const hasAssets = (data?.total ?? 0) > 0;
+  const examples = hasAssets ? [...EXAMPLES, REUSE_EXAMPLE] : EXAMPLES;
+
   return (
-    <Empty className='border-none'>
-      <EmptyHeader>
-        <EmptyMedia variant='icon'>
-          <Icons.sparkles />
+    // p-0：Empty 默认 p-6 会让示例列比输入框各缩 24px，去掉后才能与 composer 边缘对齐
+    <Empty className='border-none p-0'>
+      <EmptyHeader className='max-w-md'>
+        <EmptyMedia variant='icon' className='size-10 rounded-xl'>
+          <Icons.sparkles className='size-5' />
         </EmptyMedia>
-        <EmptyTitle>Agent 创作工作台</EmptyTitle>
+        <EmptyTitle className='text-xl font-semibold tracking-tight'>Agent 创作工作台</EmptyTitle>
         <EmptyDescription>
           用自然语言描述创作需求，Agent 会规划并产出 Markdown / HTML /
-          图片资产，可在「我的资产」统一管理。
+          图片资产；也可以引用「我的资产」里的作品继续创作。
         </EmptyDescription>
       </EmptyHeader>
-      <EmptyContent className='max-w-lg'>
+      {/* 与消息列/输入区同宽（max-w-3xl），保持整页一条稳定中轴 */}
+      <EmptyContent className='max-w-3xl'>
         <div className='flex w-full flex-col gap-2'>
-          {EXAMPLES.map((example) => (
+          {examples.map((example) => (
             <button
               key={example}
               type='button'

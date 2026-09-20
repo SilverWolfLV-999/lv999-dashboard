@@ -46,7 +46,10 @@ export function ToolImagePart({
     return (
       <div className='text-muted-foreground flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm'>
         <Icons.spinner className='size-4 animate-spin' />
-        正在{verb}图片{title ? `：${title}` : '…'}（通常需 15–60 秒）
+        {/* 离开安全（可恢复流）的承诺只在这里给出：图片任务是唯一值得为此等待的长任务 */}
+        <span>
+          正在{verb}图片{title ? `：${title}` : '…'}（约 15–60 秒；离开页面也会继续）
+        </span>
       </div>
     );
   }
