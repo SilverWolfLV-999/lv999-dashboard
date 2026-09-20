@@ -149,7 +149,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 ## 6. 资产化
 
-- **三类资产**：`markdown` / `html` / `image`（元数据统一在 [`constants/kinds.ts`](../src/features/agent/constants/kinds.ts)，对话卡片 / 预览弹窗 / 表格列共用）。
+- **三类资产**：`markdown` / `html` / `image`（元数据统一在 [`constants/kinds.ts`](../src/features/agent/constants/kinds.ts)，对话卡片 / 预览弹窗 / 表格列共用）。另有第四类 `design`（设计画布产物）由设计模块写入，见 [docs/design-editor.md](./design-editor.md)。
 - **文本资产**：正文直接存 `content` 列（Phase 1 决策：MVP 不引入 OSS，`storageKey` / `mime` / `sizeBytes` 字段已预留）。
 - **图片资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。
 - **血缘**：I2I 产物通过 `sourceAssetId` 指向源图；预览弹窗展示「基于《源标题》修改」；源图删除后 `SET NULL`，派生图仍可访问。
@@ -208,8 +208,11 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | GET | `/api/agent/conversations` | 会话列表 |
 | PATCH / DELETE | `/api/agent/conversations/[id]` | 更新（标题 / 模型）/ 删除会话 |
 | GET | `/api/agent/assets` | 资产列表（分页 / 搜索 / kind 筛选 / 排序）|
-| GET / DELETE | `/api/agent/assets/[id]` | 资产详情（含签名 previewUrl）/ 删除 |
-| GET | `/api/agent/assets/[id]/download` | 下载（图片 302 签名 URL / 文本直接返回）|
+| POST | `/api/agent/assets` | 创建 design 资产（限流 scope `design` 30/分）——详见 design-editor.md |
+| GET / DELETE | `/api/agent/assets/[id]` | 资产详情（有 `storageKey` 时附签名 previewUrl，cover image + design）/ 删除 |
+| PATCH | `/api/agent/assets/[id]` | 更新 design 资产（归属且 `kind==='design'`）|
+| GET | `/api/agent/assets/[id]/download` | 下载（image / design 走 302 签名 URL，文本直接返回）|
+| GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片、规避 canvas 跨域污染）|
 
 ---
 
