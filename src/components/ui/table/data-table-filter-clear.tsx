@@ -18,7 +18,7 @@ export function DataTableFilterClear({
   return (
     <div
       role='button'
-      aria-label={`Clear ${title} filter`}
+      aria-label={`清除${title ?? ''}筛选`}
       tabIndex={0}
       onClick={onReset}
       onKeyDown={(event) => {

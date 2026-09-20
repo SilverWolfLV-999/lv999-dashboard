@@ -25,8 +25,8 @@ const AssetPreviewDialog = dynamic(
   { ssr: false }
 );
 
-/** 标题单元格：点击打开预览弹窗（资产视角，不再深链到来源会话） */
-function AssetTitleCell({ assetId, title }: { assetId: string; title: string }) {
+/** 标题单元格：类型缩略图 + 标题，点击打开预览弹窗（资产视角，不再深链到来源会话） */
+function AssetTitleCell({ asset }: { asset: Asset }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
 
@@ -38,13 +38,46 @@ function AssetTitleCell({ assetId, title }: { assetId: string; title: string }) 
 
   return (
     <>
-      <button type='button' onClick={openPreview} className='font-medium hover:underline'>
-        {title}
+      <button
+        type='button'
+        onClick={openPreview}
+        className='group flex min-w-0 items-center gap-3 text-left'
+      >
+        <AssetThumb asset={asset} />
+        <span className='truncate font-medium group-hover:underline'>{asset.title}</span>
       </button>
       {previewMounted && (
-        <AssetPreviewDialog assetId={assetId} open={previewOpen} onOpenChange={setPreviewOpen} />
+        <AssetPreviewDialog assetId={asset.id} open={previewOpen} onOpenChange={setPreviewOpen} />
       )}
     </>
+  );
+}
+
+/**
+ * 行首缩略图：图片/设计资产经同源 /raw 代理加载 36px 预览（设计取导出 PNG），
+ * 文本类资产与加载失败回退为类型图标 tile；bg-muted 兼作暗色下透明图底色。
+ */
+function AssetThumb({ asset }: { asset: Asset }) {
+  const [failed, setFailed] = useState(false);
+  const { icon: KindIcon } = getAssetKindMeta(asset.kind);
+  const isVisual = (asset.kind === 'image' || asset.kind === 'design') && !failed;
+
+  if (!isVisual) {
+    return (
+      <span className='bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md'>
+        <KindIcon className='size-4' />
+      </span>
+    );
+  }
+  return (
+    // oxlint-disable-next-line nextjs/no-img-element -- 同源 /raw 代理缩略图，不经图片优化器
+    <img
+      src={`/api/agent/assets/${asset.id}/raw`}
+      alt=''
+      loading='lazy'
+      onError={() => setFailed(true)}
+      className='bg-muted border-border/60 size-9 shrink-0 rounded-md border object-cover'
+    />
   );
 }
 
@@ -103,7 +136,7 @@ export const columns: ColumnDef<Asset>[] = [
     header: ({ column }: { column: Column<Asset, unknown> }) => (
       <DataTableColumnHeader column={column} title='标题' />
     ),
-    cell: ({ row }) => <AssetTitleCell assetId={row.original.id} title={row.original.title} />,
+    cell: ({ row }) => <AssetTitleCell asset={row.original} />,
     meta: {
       label: '标题',
       placeholder: '搜索资产标题...',
@@ -148,7 +181,10 @@ export const columns: ColumnDef<Asset>[] = [
       <span className='text-muted-foreground text-sm'>
         {formatBytes(row.original.sizeBytes ?? 0)}
       </span>
-    )
+    ),
+    meta: {
+      label: '大小'
+    }
   },
   {
     id: 'createdAt',
@@ -160,18 +196,32 @@ export const columns: ColumnDef<Asset>[] = [
       <span className='text-muted-foreground text-sm'>
         {formatDateTime(row.original.createdAt)}
       </span>
-    )
+    ),
+    meta: {
+      label: '创建时间'
+    }
   },
   {
     id: 'favorite',
     accessorKey: 'favorite',
     enableSorting: false,
+    /** 紧凑固定列：图标贴右缘成组，避免宽列内悬浮感 */
+    size: 48,
     header: () => <span className='sr-only'>收藏</span>,
-    cell: ({ row }) => <FavoriteCell asset={row.original} />,
+    cell: ({ row }) => (
+      <div className='flex justify-center'>
+        <FavoriteCell asset={row.original} />
+      </div>
+    ),
     enableHiding: false
   },
   {
     id: 'actions',
-    cell: ({ row }) => <CellAction data={row.original} />
+    size: 48,
+    cell: ({ row }) => (
+      <div className='flex justify-center'>
+        <CellAction data={row.original} />
+      </div>
+    )
   }
 ];
