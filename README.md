@@ -8,7 +8,7 @@
 
 ## 项目简介
 
-LV999 Dashboard 基于开源项目 [Kiranism/next-shadcn-dashboard-starter](https://github.com/Kiranism/next-shadcn-dashboard-starter) 二次开发，作为个人项目的统一后台底座：
+LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、生产级、快速起步：
 
 - **功能全部可运行**：数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证与组织端到端打通。
 - **工程模式生产级**：数据层遵循 TanStack Query 官方 SSR 模式，按 feature 组织模块，每个模块的 `api/service.ts` 是接入真实后端时唯一需要替换的文件。
@@ -170,7 +170,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 - [x] 完整后台骨架：认证 / 多租户 / RBAC / 数据表格 / 表单 / 主题
 - [ ] 接入真实后端数据（替换各 feature 的 `api/service.ts`）
-- [ ] 替换预览截图与 OG 图（当前仍为模板占位图）
+- [ ] 替换预览截图与 OG 图（当前为 AI 生成的宣传图，后期将替换为真实界面截图）
 - [ ] 按需扩展业务模块
 
 ## 许可证与致谢
