@@ -22,7 +22,8 @@ for (const group of navGroups) {
 
 // 导航配置未直接覆盖的路径段兜底映射
 const segmentTitleMap: Record<string, string> = {
-  dashboard: '仪表盘'
+  dashboard: '仪表盘',
+  profile: '个人资料'
 };
 
 export function useBreadcrumbs() {

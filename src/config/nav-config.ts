@@ -77,30 +77,5 @@ export const navGroups: NavGroup[] = [
         items: []
       }
     ]
-  },
-  {
-    label: '',
-    items: [
-      {
-        title: '账户',
-        url: '#',
-        icon: 'account',
-        isActive: true,
-        items: [
-          {
-            title: '个人资料',
-            url: '/dashboard/profile',
-            icon: 'profile',
-            shortcut: ['m', 'm']
-          },
-          {
-            title: '登录',
-            shortcut: ['l', 'l'],
-            url: '/',
-            icon: 'login'
-          }
-        ]
-      }
-    ]
   }
 ];
