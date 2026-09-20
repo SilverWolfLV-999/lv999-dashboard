@@ -5,13 +5,14 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createConversationMutation, updateConversationMutation } from '../../api/mutations';
 import { agentKeys } from '../../api/queries';
 import type { Conversation } from '../../api/types';
 import { DEFAULT_MODEL, getModelLabel } from '../../constants/models';
+import { buildAssetReferenceText, type ReferencedAsset } from '../../lib/asset-reference';
 import {
   clearPendingFirstMessage,
   setPendingFirstMessage,
@@ -38,6 +39,8 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   const conversationIdRef = useRef(conversation?.id);
   const [input, setInput] = useState('');
   const [model, setModel] = useState(conversation?.model ?? DEFAULT_MODEL);
+  // 已选定的引用资产：提交时以机器可读块注入文本，让模型确定性地拿到 assetId
+  const [referencedAssets, setReferencedAssets] = useState<ReferencedAsset[]>([]);
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -77,9 +80,21 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
 
   const isGenerating = status === 'submitted' || status === 'streaming';
 
+  // 引用去重（选择器已置灰已引用项，此处再兜一道）；函数式更新保证批量添加逐项生效
+  const handleAddReference = useCallback((asset: ReferencedAsset) => {
+    setReferencedAssets((prev) =>
+      prev.some((item) => item.id === asset.id) ? prev : [...prev, asset]
+    );
+  }, []);
+
+  const handleRemoveReference = useCallback((id: string) => {
+    setReferencedAssets((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   const handleSubmit = async () => {
-    const text = input.trim();
-    if (!text || isGenerating || createConversation.isPending) return;
+    const userText = input.trim();
+    if (!userText || isGenerating || createConversation.isPending) return;
+    const text = buildAssetReferenceText(referencedAssets, userText);
 
     if (!conversationIdRef.current) {
       try {
@@ -89,6 +104,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
         // 首条消息经一次性交接由目标页消费发送（导航会重挂载本组件）。
         setPendingFirstMessage(created.id, text);
         setInput('');
+        setReferencedAssets([]);
         router.replace(`/dashboard/agent/${created.id}`);
       } catch {
         toast.error('创建会话失败，请稍后重试');
@@ -97,6 +113,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
     }
 
     setInput('');
+    setReferencedAssets([]);
     void sendMessage({ text });
   };
 
@@ -186,6 +203,9 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
         isGenerating={isGenerating}
         model={model}
         onModelChange={handleModelChange}
+        referencedAssets={referencedAssets}
+        onAddReference={handleAddReference}
+        onRemoveReference={handleRemoveReference}
       />
     </div>
   );

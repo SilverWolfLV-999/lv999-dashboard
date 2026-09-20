@@ -6,6 +6,8 @@ import { memo } from 'react';
 import { Streamdown } from 'streamdown';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { Message, MessageContent } from '@/components/ui/message';
+import { getAssetKindMeta } from '../../constants/kinds';
+import { parseAssetReferenceBlock, type ParsedAssetReference } from '../../lib/asset-reference';
 import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
 import { ToolImagePart, type ImageAssetToolPart } from './tool-image-part';
 
@@ -29,13 +31,27 @@ export const MessageItem = memo(function MessageItem({
     return (
       <Message align='end'>
         <MessageContent>
-          {message.parts.map((part, index) =>
-            part.type === 'text' ? (
-              <Bubble key={index} variant='secondary' align='end'>
-                <BubbleContent className='whitespace-pre-wrap'>{part.text}</BubbleContent>
-              </Bubble>
-            ) : null
-          )}
+          {message.parts.map((part, index) => {
+            if (part.type !== 'text') return null;
+            // 发送时注入的 [引用资产] 块渲染为 chip（不把 uuid 噪音抛给用户）
+            const { references, text } = parseAssetReferenceBlock(part.text);
+            return (
+              <div key={index} className='flex flex-col items-end gap-1.5'>
+                {references.length > 0 && (
+                  <ul className='flex flex-wrap justify-end gap-1.5' aria-label='引用的资产'>
+                    {references.map((reference) => (
+                      <ReferenceChip key={reference.id} reference={reference} />
+                    ))}
+                  </ul>
+                )}
+                {text.trim() && (
+                  <Bubble variant='secondary' align='end'>
+                    <BubbleContent className='whitespace-pre-wrap'>{text}</BubbleContent>
+                  </Bubble>
+                )}
+              </div>
+            );
+          })}
         </MessageContent>
       </Message>
     );
@@ -81,3 +97,15 @@ export const MessageItem = memo(function MessageItem({
     </Message>
   );
 });
+
+/** 已发送消息里的引用项：只展示类型图标 + 标题（id 仅模型需要） */
+function ReferenceChip({ reference }: { reference: ParsedAssetReference }) {
+  const { label, icon: KindIcon } = getAssetKindMeta(reference.kind);
+  return (
+    <li className='bg-muted text-muted-foreground flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs'>
+      <KindIcon className='size-3.5 shrink-0' />
+      <span className='text-foreground truncate'>{reference.title}</span>
+      <span className='shrink-0'>{label}</span>
+    </li>
+  );
+}

@@ -1,10 +1,19 @@
 'use client';
 
-import type { KeyboardEvent } from 'react';
+import dynamic from 'next/dynamic';
+import { useState, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/icons';
+import { getAssetKindMeta } from '../../constants/kinds';
+import type { ReferencedAsset } from '../../lib/asset-reference';
 import { ModelSelector } from './model-selector';
+
+/** 按需加载：不打开选择器就不下载弹窗 chunk（bundle-dynamic-imports） */
+const AssetReferencePicker = dynamic(
+  () => import('./asset-reference-picker').then((m) => m.AssetReferencePicker),
+  { ssr: false }
+);
 
 interface ChatComposerProps {
   value: string;
@@ -14,9 +23,13 @@ interface ChatComposerProps {
   isGenerating: boolean;
   model: string;
   onModelChange: (value: string) => void;
+  /** 已引用的资产（展示为可移除 chip，提交时由 chat-window 注入机器可读块） */
+  referencedAssets: ReferencedAsset[];
+  onAddReference: (asset: ReferencedAsset) => void;
+  onRemoveReference: (id: string) => void;
 }
 
-/** 输入区：模型选择 + 文本输入 + 发送/停止 */
+/** 输入区：模型选择 + 引用资产 + 文本输入 + 发送/停止 */
 export function ChatComposer({
   value,
   onChange,
@@ -24,8 +37,14 @@ export function ChatComposer({
   onStop,
   isGenerating,
   model,
-  onModelChange
+  onModelChange,
+  referencedAssets,
+  onAddReference,
+  onRemoveReference
 }: ChatComposerProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMounted, setPickerMounted] = useState(false);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -35,9 +54,40 @@ export function ChatComposer({
     }
   };
 
+  // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
+  const openPicker = () => {
+    setPickerMounted(true);
+    setPickerOpen(true);
+  };
+
   return (
     <div className='shrink-0 border-t'>
       <div className='mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-3'>
+        {referencedAssets.length > 0 && (
+          <ul className='flex flex-wrap gap-1.5' aria-label='已引用资产'>
+            {referencedAssets.map((asset) => {
+              const { label, icon: KindIcon } = getAssetKindMeta(asset.kind);
+              return (
+                <li
+                  key={asset.id}
+                  className='bg-muted flex max-w-full items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-xs'
+                >
+                  <KindIcon className='text-muted-foreground size-3.5 shrink-0' />
+                  <span className='truncate font-medium'>{asset.title}</span>
+                  <span className='text-muted-foreground shrink-0'>{label}</span>
+                  <button
+                    type='button'
+                    onClick={() => onRemoveReference(asset.id)}
+                    aria-label={`移除引用：${asset.title}`}
+                    className='text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 rounded p-0.5 focus-visible:ring-2 focus-visible:outline-none'
+                  >
+                    <Icons.close className='size-3.5' />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <Textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -47,7 +97,20 @@ export function ChatComposer({
           className='max-h-40 min-h-[3.25rem] resize-none'
         />
         <div className='flex items-center justify-between gap-2'>
-          <ModelSelector value={model} onChange={onModelChange} disabled={isGenerating} />
+          <div className='flex min-w-0 items-center gap-2'>
+            <ModelSelector value={model} onChange={onModelChange} disabled={isGenerating} />
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={openPicker}
+              aria-label='引用资产'
+              title='引用「我的资产」中的作品，让 Agent 基于它继续创作'
+            >
+              <Icons.paperclip />
+              {/* 窄屏只留图标，避免与模型选择器、发送按钮挤在一行 */}
+              <span className='hidden sm:inline'>引用资产</span>
+            </Button>
+          </div>
           {isGenerating ? (
             <Button variant='outline' size='sm' onClick={onStop}>
               <Icons.stop /> 停止
@@ -59,6 +122,14 @@ export function ChatComposer({
           )}
         </div>
       </div>
+      {pickerMounted && (
+        <AssetReferencePicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          referencedIds={referencedAssets.map((asset) => asset.id)}
+          onPick={onAddReference}
+        />
+      )}
     </div>
   );
 }

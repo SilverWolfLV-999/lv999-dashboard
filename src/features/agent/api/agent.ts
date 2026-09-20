@@ -5,7 +5,8 @@ import { ASPECT_KEYS, ASPECT_PRESETS } from '../constants/image-models';
 import { resolveModel } from './provider';
 import { generateImage } from './image-generation';
 import { editImageAssetCore } from './image-edit';
-import { createAsset, createImageAsset } from './service';
+import { createAsset, createImageAsset, getAsset, searchAssets } from './service';
+import { ASSET_KIND_VALUES } from './types';
 import type { AssetKind } from './types';
 
 /** 单个资产的内容上限（字符数按 UTF-8 字节计算） */
@@ -24,13 +25,19 @@ const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，�
    - 需要竖版封面（小红书等）时用 aspect 指定 "3:4"；方形用 "1:1"、横版用 "16:9"；不确定时可不传
    - 图片生成通常需要 10-60 秒，等待期间不要重复调用；同时可继续撰写配套文案
 4. 当用户要求修改、迭代已有图片（如"把刚才那张改成水墨风""背景换成夜晚"）时，调用 editImageAsset：
-   - sourceAssetId 必须来自上文工具返回值：使用 createImageAsset / editImageAsset 返回的 assetId
+   - sourceAssetId 必须是真实存在的图片资产 id：来自上文 createImageAsset / editImageAsset 的返回值、findAssets 的检索结果，或用户消息中的 [引用资产] 块
    - instruction 描述修改要求；title 反映修改后的结果（如"杭州秋日漫步·水墨风"）
    - 一次编辑只基于一张源图；用户想改的图无法从上文确定时，先问清楚再调用
-5. 一次回复可以产出多个资产（例如"三版文案"= 三个 markdown 资产；或先配图再写文案；或先 markdown 文案再配套 HTML 落地页）。
-6. 保存完成后，用一两句话总结产出了什么，不要重复粘贴完整内容。
-7. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
-8. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
+5. 复用用户已有作品（findAssets / readAsset）：
+   - 用户消息中出现 [引用资产] 块时，直接使用块内给出的 id，不要再调 findAssets 检索
+   - 用户用自然语言指向已有作品（"我之前那张秋天的图""基于这篇文案再写一版"）时，先用 findAssets 检索确认，绝不臆造 id 或内容
+   - 命中多个候选时，列出候选请用户确认，或选最相关的一个并说明依据；findAssets 无命中时如实告知并请用户补充线索
+   - 基于文本资产（markdown / html）改写或扩展 → 先 readAsset 取正文，再创作并用 createAsset 存为新资产（不要覆盖原资产）
+   - 修改图片资产 → 用 editImageAsset（sourceAssetId 传该图 id），不要试图用 readAsset 的提示词去"重画"一张
+6. 一次回复可以产出多个资产（例如"三版文案"= 三个 markdown 资产；或先配图再写文案；或先 markdown 文案再配套 HTML 落地页）。
+7. 保存完成后，用一两句话总结产出了什么，不要重复粘贴完整内容。
+8. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
+9. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
 
 const CREATE_ASSET_DESCRIPTION =
   '把一份完整作品保存为结构化资产。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。';
@@ -58,13 +65,15 @@ const createImageAssetInputSchema = z.object({
 });
 
 const EDIT_IMAGE_ASSET_DESCRIPTION =
-  '在已有图片资产的基础上按用户要求进行图像编辑（图生图），产出新的图片资产。sourceAssetId 必须使用上文中 createImageAsset / editImageAsset 工具返回的 assetId；instruction 描述修改要求（如"背景换成夜晚""改成水墨淡彩风格"）；title 反映修改后的结果。';
+  '在已有图片资产的基础上按用户要求进行图像编辑（图生图），产出新的图片资产。sourceAssetId 必须是真实存在的图片资产 id：来自上文 createImageAsset / editImageAsset 的返回值、findAssets 的检索结果，或用户消息中 [引用资产] 块给出的 id；instruction 描述修改要求（如"背景换成夜晚""改成水墨淡彩风格"）；title 反映修改后的结果。';
 
 const editImageAssetInputSchema = z.object({
   sourceAssetId: z
     .string()
     .uuid()
-    .describe('被修改的源图片资产 id（必须来自上文 createImageAsset / editImageAsset 的返回值）'),
+    .describe(
+      '被修改的源图片资产 id（来自上文 createImageAsset / editImageAsset 返回值、findAssets 结果或消息中的 [引用资产] 块）'
+    ),
   title: z.string().min(1).max(100).describe('修改后新资产的标题'),
   instruction: z
     .string()
@@ -75,6 +84,29 @@ const editImageAssetInputSchema = z.object({
     .enum(ASPECT_KEYS)
     .optional()
     .describe('可选：改变输出比例（不传则延续源图构图；需要竖版封面用 "3:4"）')
+});
+
+const FIND_ASSETS_DESCRIPTION =
+  '检索当前用户的资产库（「我的资产」），按标题关键词与类型查找可复用的已有作品，返回候选的元信息（assetId / title / kind / createdAt），不返回正文与图片。当用户提到"我之前那张""这篇文案""上次的封面"等指向已有作品时，先用它确认 assetId：文本资产接着用 readAsset 取正文，图片资产接着用 editImageAsset 修改。消息中已有 [引用资产] 块时不需要调用本工具。';
+
+const findAssetsInputSchema = z.object({
+  query: z
+    .string()
+    .max(100)
+    .optional()
+    .describe('标题关键词（模糊匹配），如"秋天""开学文案"；不确定时可省略以列出最近资产'),
+  kind: z
+    .enum(ASSET_KIND_VALUES)
+    .optional()
+    .describe('限定资产类型：markdown / html / image / design；不确定时可省略'),
+  limit: z.number().int().min(1).max(20).optional().describe('返回条数上限，默认 8')
+});
+
+const READ_ASSET_DESCRIPTION =
+  '读取指定资产的可用内容，用于"基于它再创作"（改写、扩展、总结、写配套文案等）。markdown / html 返回正文 content；image 返回其生成提示词 prompt（不返回图片本身，要改图请用 editImageAsset）；design 为结构化数据，不支持读取正文。assetId 必须来自 findAssets 结果、上文工具返回值或消息中的 [引用资产] 块。';
+
+const readAssetInputSchema = z.object({
+  assetId: z.string().uuid().describe('要读取的资产 id（必须归属当前用户）')
 });
 
 /** 服务端校验历史消息使用（无需 execute，与 Agent 内工具共享同一 schema） */
@@ -90,6 +122,14 @@ export const agentValidationTools = {
   editImageAsset: tool({
     description: EDIT_IMAGE_ASSET_DESCRIPTION,
     inputSchema: editImageAssetInputSchema
+  }),
+  findAssets: tool({
+    description: FIND_ASSETS_DESCRIPTION,
+    inputSchema: findAssetsInputSchema
+  }),
+  readAsset: tool({
+    description: READ_ASSET_DESCRIPTION,
+    inputSchema: readAssetInputSchema
   })
 };
 
@@ -175,6 +215,60 @@ export function editImageAssetTool(params: { userId: string; conversationId: str
 }
 
 /**
+ * 资产库检索工具：只读元信息，按 userId 过滤（归属校验在 searchAssets 内完成）。
+ * 不回传 content / storageKey / 签名 URL：避免工具输出膨胀，也避免图片地址流入模型上下文。
+ */
+function findAssetsTool(params: { userId: string }) {
+  return tool({
+    description: FIND_ASSETS_DESCRIPTION,
+    inputSchema: findAssetsInputSchema,
+    execute: async ({ query, kind, limit }) => {
+      const hits = await searchAssets(params.userId, { query, kind, limit });
+      return { assets: hits };
+    }
+  });
+}
+
+/**
+ * 资产正文读取工具：按 kind 分支返回可用内容。
+ * 图片只回传生成提示词（像素不进上下文，改图走 editImageAsset 服务端传参）；
+ * 归属校验复用 getAsset（越权与不存在同样返回 undefined，不泄漏存在性）。
+ */
+function readAssetTool(params: { userId: string }) {
+  return tool({
+    description: READ_ASSET_DESCRIPTION,
+    inputSchema: readAssetInputSchema,
+    execute: async ({ assetId }) => {
+      const asset = await getAsset(params.userId, assetId);
+      if (!asset) {
+        throw new Error('找不到该资产（可能已删除或不属于当前用户），请用 findAssets 重新检索。');
+      }
+      if (asset.kind === 'markdown' || asset.kind === 'html') {
+        return {
+          kind: asset.kind,
+          title: asset.title,
+          content: asset.content ?? '',
+          hint: '这是文本资产正文；请基于它按用户要求改写/扩展，并用 createAsset 保存为新资产。'
+        };
+      }
+      if (asset.kind === 'image') {
+        return {
+          kind: asset.kind,
+          title: asset.title,
+          prompt: asset.content ?? '',
+          hint: `这是图片资产（prompt 为其生成提示词）；若要在其基础上修改，请调用 editImageAsset 并把 ${assetId} 作为 sourceAssetId。`
+        };
+      }
+      return {
+        kind: asset.kind,
+        title: asset.title,
+        hint: '设计文档为结构化数据，暂不支持读取正文。'
+      };
+    }
+  });
+}
+
+/**
  * 每请求构建一个 Agent（serverless 无状态，上下文经闭包注入工具）。
  */
 export function buildAgent(params: { userId: string; conversationId: string; modelKey: string }) {
@@ -185,7 +279,9 @@ export function buildAgent(params: { userId: string; conversationId: string; mod
     tools: {
       createAsset: createAssetTool(params),
       createImageAsset: createImageAssetTool(params),
-      editImageAsset: editImageAssetTool(params)
+      editImageAsset: editImageAssetTool(params),
+      findAssets: findAssetsTool(params),
+      readAsset: readAssetTool(params)
     },
     stopWhen: isStepCount(6),
     timeout: { totalMs: 240_000 },

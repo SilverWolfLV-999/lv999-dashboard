@@ -25,7 +25,10 @@ export interface ConversationsResponse {
   conversations: Conversation[];
 }
 
-export type AssetKind = 'markdown' | 'html' | 'image' | 'design';
+/** 资产类型枚举值（单一来源：Agent 工具的 Zod enum 与展示元数据均以此为准） */
+export const ASSET_KIND_VALUES = ['markdown', 'html', 'image', 'design'] as const;
+
+export type AssetKind = (typeof ASSET_KIND_VALUES)[number];
 
 /** 资产来源：agent 生成 / 用户上传 */
 export type AssetSource = 'agent' | 'upload';
@@ -74,6 +77,24 @@ export interface AssetsResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+/** Agent 工具检索资产库的过滤条件（findAssets） */
+export interface AssetSearchFilters {
+  /** 标题模糊关键词（可空） */
+  query?: string;
+  /** 限定资产类型（可空） */
+  kind?: AssetKind;
+  /** 返回条数上限（1..20，默认 8） */
+  limit?: number;
+}
+
+/** 检索命中项：仅元信息，不含正文与签名 URL（供模型引用，避免体积膨胀与越权外泄） */
+export interface AssetSearchHit {
+  assetId: string;
+  title: string;
+  kind: AssetKind;
+  createdAt: string;
 }
 
 export interface CreateConversationPayload {

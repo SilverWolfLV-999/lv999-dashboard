@@ -10,6 +10,8 @@ import type {
   Asset,
   AssetDetail,
   AssetFilters,
+  AssetSearchFilters,
+  AssetSearchHit,
   AssetsResponse,
   AssetKind,
   ChatMessage,
@@ -535,6 +537,46 @@ export async function listAssets(userId: string, filters: AssetFilters): Promise
     page,
     limit
   };
+}
+
+/**
+ * Agent 工具（findAssets）专用检索：按标题关键词 + 类型过滤，按创建时间倒序取前 N 条。
+ * 只选取可引用的元信息列（不读 content / storageKey），保证工具返回不含正文与图片地址。
+ */
+export async function searchAssets(
+  userId: string,
+  filters: AssetSearchFilters
+): Promise<AssetSearchHit[]> {
+  const db = getDb();
+  const limit = Math.min(20, Math.max(1, filters.limit ?? 8));
+
+  const conditions = [eq(assets.userId, userId)];
+  const query = filters.query?.trim();
+  if (query) {
+    conditions.push(ilike(assets.title, `%${query}%`));
+  }
+  if (filters.kind) {
+    conditions.push(eq(assets.kind, filters.kind));
+  }
+
+  const rows = await db
+    .select({
+      id: assets.id,
+      title: assets.title,
+      kind: assets.kind,
+      createdAt: assets.createdAt
+    })
+    .from(assets)
+    .where(and(...conditions))
+    .orderBy(desc(assets.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    assetId: row.id,
+    title: row.title,
+    kind: row.kind as AssetKind,
+    createdAt: row.createdAt.toISOString()
+  }));
 }
 
 export async function getAsset(userId: string, assetId: string): Promise<AssetDetail | undefined> {
