@@ -59,7 +59,7 @@ export function DataTableColumnHeader<TData, TValue>({
               onClick={() => column.toggleSorting(false)}
             >
               <Icons.chevronUp />
-              Asc
+              升序
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
               closeOnClick
@@ -68,7 +68,7 @@ export function DataTableColumnHeader<TData, TValue>({
               onClick={() => column.toggleSorting(true)}
             >
               <Icons.chevronDown />
-              Desc
+              降序
             </DropdownMenuCheckboxItem>
             {column.getIsSorted() && (
               <DropdownMenuItem
@@ -76,7 +76,7 @@ export function DataTableColumnHeader<TData, TValue>({
                 onClick={() => column.clearSorting()}
               >
                 <Icons.close />
-                Reset
+                重置排序
               </DropdownMenuItem>
             )}
           </DropdownMenuGroup>
@@ -89,7 +89,7 @@ export function DataTableColumnHeader<TData, TValue>({
             onClick={() => column.toggleVisibility(false)}
           >
             <Icons.eyeOff />
-            Hide
+            隐藏
           </DropdownMenuCheckboxItem>
         )}
       </DropdownMenuContent>
