@@ -75,6 +75,14 @@ export const navGroups: NavGroup[] = [
         shortcut: ['a', 'p'],
         isActive: false,
         items: []
+      },
+      {
+        title: '设计画布',
+        url: '/dashboard/design',
+        icon: 'palette',
+        shortcut: ['d', 's'],
+        isActive: false,
+        items: []
       }
     ]
   }

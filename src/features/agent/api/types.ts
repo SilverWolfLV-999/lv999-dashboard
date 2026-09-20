@@ -23,7 +23,7 @@ export interface ConversationsResponse {
   conversations: Conversation[];
 }
 
-export type AssetKind = 'markdown' | 'html' | 'image';
+export type AssetKind = 'markdown' | 'html' | 'image' | 'design';
 
 /** 资产来源：agent 生成 / 用户上传 */
 export type AssetSource = 'agent' | 'upload';

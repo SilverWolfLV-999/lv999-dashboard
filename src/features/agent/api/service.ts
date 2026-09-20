@@ -387,6 +387,92 @@ export async function createImageAsset(params: {
   return { id: assetId, sizeBytes };
 }
 
+/**
+ * 设计画布资产：文档 JSON 存 content 列，导出 PNG 预览存 OSS（storageKey）。
+ * 参照 createImageAsset 的「预生成 id → 转存 OSS → 一次性 insert 全字段」。
+ * previewPng 可空（纯图形文档首次保存可不带预览）；mime 固定 application/json（描述 content 列）。
+ */
+export async function createDesignAsset(params: {
+  userId: string;
+  title: string;
+  /** 文档 JSON 字符串（已序列化） */
+  document: string;
+  /** 导出 PNG 预览字节（可空） */
+  previewPng?: Buffer | null;
+}): Promise<{ id: string; sizeBytes: number }> {
+  const assetId = randomUUID();
+  const sizeBytes = Buffer.byteLength(params.document, 'utf8');
+
+  let storageKey: string | null = null;
+  if (params.previewPng && params.previewPng.byteLength > 0) {
+    storageKey = assetObjectKey(params.userId, assetId, 'png');
+    await putObject(storageKey, params.previewPng, 'image/png');
+  }
+
+  const db = getDb();
+  await db.insert(assets).values({
+    id: assetId,
+    userId: params.userId,
+    conversationId: null,
+    source: 'agent',
+    title: params.title,
+    kind: 'design',
+    content: params.document,
+    storageKey,
+    mime: 'application/json',
+    sizeBytes,
+    status: 'ready'
+  });
+  return { id: assetId, sizeBytes };
+}
+
+/**
+ * 按所有权更新 design 资产：content/title 按存在性更新，重传 PNG 覆盖同一 storageKey。
+ * 仅对 kind='design' 且归属当前用户的行生效；返回是否命中更新。
+ */
+export async function updateDesignAsset(params: {
+  userId: string;
+  assetId: string;
+  title?: string;
+  /** 文档 JSON 字符串（已序列化） */
+  document?: string;
+  previewPng?: Buffer | null;
+}): Promise<boolean> {
+  let storageKey: string | null = null;
+  if (params.previewPng && params.previewPng.byteLength > 0) {
+    storageKey = assetObjectKey(params.userId, params.assetId, 'png');
+    await putObject(storageKey, params.previewPng, 'image/png');
+  }
+
+  const set: Partial<{
+    title: string;
+    content: string;
+    sizeBytes: number;
+    storageKey: string;
+    updatedAt: Date;
+  }> = { updatedAt: new Date() };
+  if (params.title !== undefined) set.title = params.title;
+  if (params.document !== undefined) {
+    set.content = params.document;
+    set.sizeBytes = Buffer.byteLength(params.document, 'utf8');
+  }
+  if (storageKey) set.storageKey = storageKey;
+
+  const db = getDb();
+  const rows = await db
+    .update(assets)
+    .set(set)
+    .where(
+      and(
+        eq(assets.id, params.assetId),
+        eq(assets.userId, params.userId),
+        eq(assets.kind, 'design')
+      )
+    )
+    .returning({ id: assets.id });
+  return rows.length > 0;
+}
+
 function parseAssetOrderBy(sort?: string): SQL {
   if (!sort) return desc(assets.createdAt);
   try {

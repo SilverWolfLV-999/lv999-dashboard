@@ -10,7 +10,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 function buildFileName(title: string, kind: string): string {
   const safeTitle = title.replace(/[\\/:*?"<>|]/g, '-').trim() || 'asset';
-  const extension = kind === 'html' ? 'html' : kind === 'image' ? 'png' : 'md';
+  // design 有 storageKey（导出 PNG 预览），走 302 签名 URL 分支，下载得到 PNG
+  const extension = kind === 'html' ? 'html' : kind === 'image' || kind === 'design' ? 'png' : 'md';
   return `${safeTitle}.${extension}`;
 }
 

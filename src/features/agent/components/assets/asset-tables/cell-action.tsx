@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertModal } from '@/components/modal/alert-modal';
@@ -33,6 +34,7 @@ interface CellActionProps {
 }
 
 export function CellAction({ data }: CellActionProps) {
+  const router = useRouter();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -73,6 +75,11 @@ export function CellAction({ data }: CellActionProps) {
             <DropdownMenuLabel>操作</DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuGroup>
+            {data.kind === 'design' && (
+              <DropdownMenuItem onClick={() => router.push(`/dashboard/design/${data.id}`)}>
+                <Icons.edit className='mr-2 h-4 w-4' /> 编辑
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={openPreview}>
               <Icons.eye className='mr-2 h-4 w-4' /> 预览
             </DropdownMenuItem>

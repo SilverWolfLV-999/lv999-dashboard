@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Streamdown } from 'streamdown';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,14 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
             {data?.sizeBytes != null && (
               <span className='text-muted-foreground text-xs'>{formatBytes(data.sizeBytes)}</span>
             )}
+            {data?.kind === 'design' && (
+              <Link
+                href={`/dashboard/design/${assetId}`}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              >
+                <Icons.edit /> 编辑
+              </Link>
+            )}
             <button
               type='button'
               onClick={() => void downloadAsset(assetId)}
@@ -91,7 +100,7 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
                   <Streamdown>{data.content ?? ''}</Streamdown>
                 </div>
               )}
-              {data.kind === 'image' &&
+              {(data.kind === 'image' || data.kind === 'design') &&
                 (data.previewUrl ? (
                   failedUrl === data.previewUrl ? (
                     <div className='text-destructive p-6 text-sm'>

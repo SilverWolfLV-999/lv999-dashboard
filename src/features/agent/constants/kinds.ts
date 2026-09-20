@@ -13,7 +13,8 @@ export interface AssetKindMeta {
 export const ASSET_KIND_META: Record<AssetKind, AssetKindMeta> = {
   markdown: { label: 'Markdown', icon: Icons.post },
   html: { label: 'HTML', icon: Icons.code },
-  image: { label: '图片', icon: Icons.media }
+  image: { label: '图片', icon: Icons.media },
+  design: { label: '设计', icon: Icons.palette }
 };
 
 /** 表格筛选/展示顺序 */
