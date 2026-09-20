@@ -5,7 +5,7 @@ import { AssetCard } from '../assets/asset-card';
 import type { AssetKind } from '../../api/types';
 
 /** 供消息渲染层断言使用：保留 output 等完整字段类型，避免双重断言抹掉结构 */
-export interface CreateImageAssetToolPart {
+export interface ImageAssetToolPart {
   state: string;
   input?: { title?: string } | undefined;
   output?: { assetId: string; title: string; kind: AssetKind; sizeBytes: number } | undefined;
@@ -13,8 +13,8 @@ export interface CreateImageAssetToolPart {
 }
 
 /**
- * createImageAsset 工具的调用状态渲染：
- * 生成中（通常 10-60 秒）→ 状态条；完成 → 资产卡片；失败 → 错误条（引导换描述重试）。
+ * 图片工具（createImageAsset 文生图 / editImageAsset 图生图）的调用状态渲染：
+ * 进行中（通常 15-60 秒）→ 状态条；完成 → 资产卡片；失败 → 错误条（引导调整后重试）。
  *
  * 关于 active：AI SDK 中止语义下（stop() / abortSignal），进行中的 tool part 不会被置为终态
  * （流以 abort chunk 结束、无 tool-output-error，持久化仍是 input-available），
@@ -23,12 +23,15 @@ export interface CreateImageAssetToolPart {
  */
 export function ToolImagePart({
   part,
-  active
+  active,
+  mode
 }: {
-  part: CreateImageAssetToolPart;
+  part: ImageAssetToolPart;
   active: boolean;
+  mode: 'create' | 'edit';
 }) {
   const state = part.state;
+  const verb = mode === 'edit' ? '修改' : '生成';
 
   if (state === 'input-streaming' || state === 'input-available') {
     const title = part.input?.title;
@@ -36,14 +39,14 @@ export function ToolImagePart({
       return (
         <div className='text-muted-foreground flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm'>
           <Icons.clock className='size-4' />
-          已停止：{title ? `${title} 未生成图片` : '图片未生成'}
+          已停止：{title ? `${title} 未${verb}图片` : `图片未${verb}`}
         </div>
       );
     }
     return (
       <div className='text-muted-foreground flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm'>
         <Icons.spinner className='size-4 animate-spin' />
-        正在生成图片{title ? `：${title}` : '…'}（通常需 10–60 秒）
+        正在{verb}图片{title ? `：${title}` : '…'}（通常需 15–60 秒）
       </div>
     );
   }
@@ -56,7 +59,8 @@ export function ToolImagePart({
   if (state === 'output-error') {
     return (
       <div className='border-destructive/40 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm'>
-        图片生成失败：{part.errorText ?? '未知错误'}（可换个画面描述后重试）
+        图片{verb}失败：{part.errorText ?? '未知错误'}
+        {mode === 'edit' ? '（可换一种修改要求后重试）' : '（可换个画面描述后重试）'}
       </div>
     );
   }

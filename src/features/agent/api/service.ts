@@ -51,6 +51,7 @@ function toAsset(row: AssetRow): Asset {
   return {
     id: row.id,
     conversationId: row.conversationId,
+    sourceAssetId: row.sourceAssetId ?? null,
     source: row.source as Asset['source'],
     kind: row.kind as AssetKind,
     title: row.title,
@@ -360,6 +361,8 @@ export async function createImageAsset(params: {
   prompt: string;
   imageBuffer: Buffer;
   mime: string;
+  /** 派生来源资产 id（I2I 编辑产物传入源资产；文生图为空） */
+  sourceAssetId?: string | null;
 }): Promise<{ id: string; sizeBytes: number }> {
   const assetId = randomUUID();
   const storageKey = assetObjectKey(params.userId, assetId, 'png');
@@ -371,6 +374,7 @@ export async function createImageAsset(params: {
     id: assetId,
     userId: params.userId,
     conversationId: params.conversationId,
+    sourceAssetId: params.sourceAssetId ?? null,
     source: 'agent',
     title: params.title,
     kind: 'image',
@@ -451,8 +455,26 @@ export async function getAsset(userId: string, assetId: string): Promise<AssetDe
     .limit(1);
   const row = rows[0];
   if (!row) return undefined;
+
+  // 派生来源标题：仅当存在 sourceAssetId 时额外查询一次（同用户域，已删除/越权同样视为不可见）
+  let sourceTitle: string | null = null;
+  if (row.sourceAssetId) {
+    const parents = await db
+      .select({ title: assets.title })
+      .from(assets)
+      .where(and(eq(assets.id, row.sourceAssetId), eq(assets.userId, userId)))
+      .limit(1);
+    sourceTitle = parents[0]?.title ?? null;
+  }
+
   // previewUrl 由调用方（详情端点）签发：data access 层不关心签名过期策略
-  return { ...toAsset(row), content: row.content, storageKey: row.storageKey, previewUrl: null };
+  return {
+    ...toAsset(row),
+    content: row.content,
+    storageKey: row.storageKey,
+    previewUrl: null,
+    sourceTitle
+  };
 }
 
 export async function deleteAsset(userId: string, assetId: string): Promise<boolean> {

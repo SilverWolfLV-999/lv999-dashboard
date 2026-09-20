@@ -186,10 +186,11 @@ async function generateViaAsyncTask(
   throw new Error(`图片生成超时（超过 ${POLL_TIMEOUT_MS / 1000} 秒），请稍后重试。`);
 }
 
-/** 同步协议：一次请求等待结果（3.0 系列；当前注册表全部走此路径） */
+/** 同步协议：一次请求等待结果（3.0 系列；T2I 与 I2I 共用此路径） */
 async function generateViaSync(
   entry: ImageModelRegistryEntry,
-  prompt: string,
+  content: { text?: string; image?: string }[],
+  size: string | undefined,
   signal: AbortSignal | undefined
 ): Promise<string> {
   const endpoint = `${DASHSCOPE_BASE_URL}/api/v1/services/aigc/multimodal-generation/generation`;
@@ -200,7 +201,7 @@ async function generateViaSync(
       headers: authHeaders(),
       body: JSON.stringify({
         model: entry.providerModelId,
-        input: { messages: [{ role: 'user', content: [{ text: prompt }] }] },
+        input: { messages: [{ role: 'user', content }] },
         parameters: {
           // n 显式设置：3.0 系列默认即为 1，显式传入防止未来模型默认多图计费
           n: 1,
@@ -208,7 +209,9 @@ async function generateViaSync(
           negative_prompt: '',
           // 3.0 系列 enable_thinking 默认开启，生成耗时会增加 3-4 倍（实测 3.0-pro 137s vs 35s），
           // 交互式生成必须显式关闭
-          enable_thinking: false
+          enable_thinking: false,
+          // 不传 size 时由模型自动推荐分辨率（T2I/I2I 同规则）
+          ...(size ? { size } : {})
         }
       }),
       signal: withTimeout(signal, SYNC_GENERATE_TIMEOUT_MS)
@@ -230,13 +233,35 @@ async function generateViaSync(
   return url;
 }
 
-/** 下载临时图 → 校验 PNG 魔数与体积上限 → 返回 Buffer（临时 URL 到此为止，不外泄） */
+/**
+ * 下载临时图 → 校验 PNG 魔数与体积上限 → 返回 Buffer（临时 URL 到此为止，不外泄）。
+ * 网络抖动重试 1 次（实测偶发 Unable to connect）；用户停止 / 超时不重试。
+ */
 async function downloadImage(url: string, signal: AbortSignal | undefined): Promise<Buffer> {
-  const response = await fetchImageApi(
-    url,
-    { signal: withTimeout(signal, DOWNLOAD_TIMEOUT_MS) },
-    'download-image'
-  );
+  let response: Response | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2 && !response; attempt += 1) {
+    try {
+      response = await fetch(url, { signal: withTimeout(signal, DOWNLOAD_TIMEOUT_MS) });
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted) {
+        throw new Error('图片生成已停止。', { cause: error });
+      }
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        console.error('[agent] image download timed out', { attempt });
+        throw new Error('图片下载超时，请稍后重试。', { cause: error });
+      }
+      console.warn('[agent] image download attempt failed', {
+        attempt,
+        error: error instanceof Error ? error.message : error
+      });
+    }
+  }
+  if (!response) {
+    console.error('[agent] image download failed after retries');
+    throw new Error('图片下载网络错误，请稍后重试。', { cause: lastError });
+  }
   if (!response.ok) {
     console.error('[agent] image download failed', { status: response.status });
     throw new Error('图片下载失败，请稍后重试。');
@@ -256,19 +281,34 @@ async function downloadImage(url: string, signal: AbortSignal | undefined): Prom
 }
 
 /**
- * 生成一张图片并返回其字节内容（MVP 单默认模型，不做选择器）。
+ * 生成/编辑一张图片并返回其字节内容（MVP 单默认模型，不做选择器）。
+ * - T2I（默认）：content 仅 text；
+ * - I2I（传入 referenceImageUrl 时）：content = [{ image }, { text }]（3.0 系列原生支持，
+ *   源图为公网可达 URL，当前传入 OSS 短期签名 URL；I2I 输入上限 10MB，由调用方预检）。
  * 内部完成「调用 → 拿临时 URL → 立即下载」；超时上限 120s（轮询）/180s（同步）。
  */
 export async function generateImage(params: {
   prompt: string;
+  /** 可选：I2I 参考图（公网 URL）；传入时走图生图/图像编辑 */
+  referenceImageUrl?: string;
+  /** 可选：输出尺寸 "宽*高"（见 ASPECT_PRESETS）；缺省由模型自动推荐 */
+  size?: string;
   /** 工具执行透传的 abortSignal（execute 第二参数），保证「停止」语义 */
   signal?: AbortSignal;
 }): Promise<{ imageBuffer: Buffer; mime: 'image/png' }> {
   const entry = resolveImageModel(DEFAULT_IMAGE_MODEL);
-  const temporaryUrl =
-    entry.protocol === 'async-task'
-      ? await generateViaAsyncTask(entry, params.prompt, params.signal)
-      : await generateViaSync(entry, params.prompt, params.signal);
+  if (entry.protocol === 'async-task') {
+    if (params.referenceImageUrl) {
+      throw new Error('当前图片模型不支持图像编辑。');
+    }
+    const temporaryUrl = await generateViaAsyncTask(entry, params.prompt, params.signal);
+    const imageBuffer = await downloadImage(temporaryUrl, params.signal);
+    return { imageBuffer, mime: 'image/png' };
+  }
+  const content = params.referenceImageUrl
+    ? [{ image: params.referenceImageUrl }, { text: params.prompt }]
+    : [{ text: params.prompt }];
+  const temporaryUrl = await generateViaSync(entry, content, params.size, params.signal);
   const imageBuffer = await downloadImage(temporaryUrl, params.signal);
   return { imageBuffer, mime: 'image/png' };
 }

@@ -1,4 +1,13 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid
+} from 'drizzle-orm/pg-core';
 
 /**
  * Agent 创作模块数据表
@@ -7,7 +16,8 @@ import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-o
  * - messages: 会话消息（parts 与 AI SDK 的 UIMessage.parts 结构对齐，原样存储）
  * - assets: 用户资产（Agent 生成 source='agent' / 用户上传 source='upload'）；
  *   文本内容存 content 列，二进制走 OSS 只存 storage_key；
- *   会话删除时 conversationId 置空（SET NULL）、资产保留
+ *   会话删除时 conversationId 置空（SET NULL）、资产保留；
+ *   图片编辑（I2I）产出的新资产通过 sourceAssetId 指向源资产（源删除时置空）
  */
 
 export const conversations = pgTable('conversations', {
@@ -42,6 +52,10 @@ export const assets = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     /** 来源会话（可空）：上传资产无会话；会话删除时置空（SET NULL），资产不随会话删除 */
     conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'set null'
+    }),
+    /** 派生来源资产（可空）：图片编辑（I2I）产出的新资产指向被编辑的源资产；源资产删除时置空（SET NULL） */
+    sourceAssetId: uuid('source_asset_id').references((): AnyPgColumn => assets.id, {
       onDelete: 'set null'
     }),
     userId: text('user_id').notNull(),

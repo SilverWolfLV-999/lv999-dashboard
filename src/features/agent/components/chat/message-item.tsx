@@ -7,7 +7,7 @@ import { Streamdown } from 'streamdown';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { Message, MessageContent } from '@/components/ui/message';
 import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
-import { ToolImagePart, type CreateImageAssetToolPart } from './tool-image-part';
+import { ToolImagePart, type ImageAssetToolPart } from './tool-image-part';
 
 /**
  * 消息项：memo 化（props 仅 message / isActive）。
@@ -62,12 +62,16 @@ export const MessageItem = memo(function MessageItem({
               />
             );
           }
-          if (isToolUIPart(part) && part.type === 'tool-createImageAsset') {
+          if (
+            isToolUIPart(part) &&
+            (part.type === 'tool-createImageAsset' || part.type === 'tool-editImageAsset')
+          ) {
             return (
               <ToolImagePart
                 key={index}
-                part={part as unknown as CreateImageAssetToolPart}
+                part={part as unknown as ImageAssetToolPart}
                 active={isActive}
+                mode={part.type === 'tool-editImageAsset' ? 'edit' : 'create'}
               />
             );
           }

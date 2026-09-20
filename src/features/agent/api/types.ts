@@ -32,6 +32,8 @@ export interface Asset {
   id: string;
   /** 来源会话（可空）：上传资产无会话；会话删除后置空，资产保留 */
   conversationId: string | null;
+  /** 派生来源资产 id（图片编辑 I2I 产物指向被编辑的源资产；源删除后置空） */
+  sourceAssetId: string | null;
   source: AssetSource;
   kind: AssetKind;
   title: string;
@@ -48,6 +50,8 @@ export interface AssetDetail extends Asset {
   storageKey: string | null;
   /** 图片资产签名预览 URL（3600s 有效，刷新后重新签发）；非图片或未签发为 null */
   previewUrl: string | null;
+  /** 源资产标题（仅当 sourceAssetId 存在且源资产仍可访问时非空，供「基于《xxx》修改」展示） */
+  sourceTitle: string | null;
 }
 
 export interface AssetFilters {
