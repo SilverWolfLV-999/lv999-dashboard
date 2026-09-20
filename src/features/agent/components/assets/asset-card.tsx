@@ -6,29 +6,29 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Icons } from '@/components/icons';
 import { cn } from '@/lib/utils';
-import { getArtifactKindMeta } from '../../constants/kinds';
-import { downloadArtifact } from '../../lib/artifact-download';
+import { getAssetKindMeta } from '../../constants/kinds';
+import { downloadAsset } from '../../lib/asset-download';
 import { formatBytes } from '../../lib/format';
-import type { ArtifactKind } from '../../api/types';
+import type { AssetKind } from '../../api/types';
 
 /** 按需加载：不打开预览则不下载含 streamdown 的弹窗 chunk（bundle-dynamic-imports） */
-const ArtifactPreviewDialog = dynamic(
-  () => import('./artifact-preview-dialog').then((m) => m.ArtifactPreviewDialog),
+const AssetPreviewDialog = dynamic(
+  () => import('./asset-preview-dialog').then((m) => m.AssetPreviewDialog),
   { ssr: false }
 );
 
-interface ArtifactCardProps {
-  artifactId: string;
+interface AssetCardProps {
+  assetId: string;
   title: string;
-  kind: ArtifactKind;
+  kind: AssetKind;
   sizeBytes?: number | null;
 }
 
-/** 对话内联的产物卡片：预览 + 下载 */
-export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCardProps) {
+/** 对话内联的资产卡片：预览 + 下载 */
+export function AssetCard({ assetId, title, kind, sizeBytes }: AssetCardProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
-  const { label, icon: KindIcon } = getArtifactKindMeta(kind);
+  const { label, icon: KindIcon } = getAssetKindMeta(kind);
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
   const openPreview = () => {
@@ -59,7 +59,7 @@ export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCar
           </button>
           <button
             type='button'
-            onClick={() => void downloadArtifact(artifactId)}
+            onClick={() => void downloadAsset(assetId)}
             className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
           >
             <Icons.download /> 下载
@@ -67,11 +67,7 @@ export function ArtifactCard({ artifactId, title, kind, sizeBytes }: ArtifactCar
         </div>
       </div>
       {previewMounted && (
-        <ArtifactPreviewDialog
-          artifactId={artifactId}
-          open={previewOpen}
-          onOpenChange={setPreviewOpen}
-        />
+        <AssetPreviewDialog assetId={assetId} open={previewOpen} onOpenChange={setPreviewOpen} />
       )}
     </>
   );

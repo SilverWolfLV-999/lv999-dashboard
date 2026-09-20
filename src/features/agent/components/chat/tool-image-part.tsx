@@ -1,20 +1,20 @@
 'use client';
 
 import { Icons } from '@/components/icons';
-import { ArtifactCard } from '../artifacts/artifact-card';
-import type { ArtifactKind } from '../../api/types';
+import { AssetCard } from '../assets/asset-card';
+import type { AssetKind } from '../../api/types';
 
 /** 供消息渲染层断言使用：保留 output 等完整字段类型，避免双重断言抹掉结构 */
-export interface CreateImageArtifactToolPart {
+export interface CreateImageAssetToolPart {
   state: string;
   input?: { title?: string } | undefined;
-  output?: { artifactId: string; title: string; kind: ArtifactKind; sizeBytes: number } | undefined;
+  output?: { assetId: string; title: string; kind: AssetKind; sizeBytes: number } | undefined;
   errorText?: string;
 }
 
 /**
- * createImageArtifact 工具的调用状态渲染：
- * 生成中（通常 10-60 秒）→ 状态条；完成 → 产物卡片；失败 → 错误条（引导换描述重试）。
+ * createImageAsset 工具的调用状态渲染：
+ * 生成中（通常 10-60 秒）→ 状态条；完成 → 资产卡片；失败 → 错误条（引导换描述重试）。
  *
  * 关于 active：AI SDK 中止语义下（stop() / abortSignal），进行中的 tool part 不会被置为终态
  * （流以 abort chunk 结束、无 tool-output-error，持久化仍是 input-available），
@@ -25,7 +25,7 @@ export function ToolImagePart({
   part,
   active
 }: {
-  part: CreateImageArtifactToolPart;
+  part: CreateImageAssetToolPart;
   active: boolean;
 }) {
   const state = part.state;
@@ -49,8 +49,8 @@ export function ToolImagePart({
   }
 
   if (state === 'output-available' && part.output) {
-    const { artifactId, title, kind, sizeBytes } = part.output;
-    return <ArtifactCard artifactId={artifactId} title={title} kind={kind} sizeBytes={sizeBytes} />;
+    const { assetId, title, kind, sizeBytes } = part.output;
+    return <AssetCard assetId={assetId} title={title} kind={kind} sizeBytes={sizeBytes} />;
   }
 
   if (state === 'output-error') {

@@ -1,4 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
+import { apiError } from '@/lib/api-error';
+import { isUuid } from '@/lib/utils';
 import {
   deleteConversation,
   getConversation,
@@ -13,12 +15,15 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(_request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Conversation not found');
+  }
   const conversation = await getConversation(userId, id);
   if (!conversation) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
   return Response.json(conversation);
 }
@@ -26,38 +31,41 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Conversation not found');
+  }
 
   let body: { title?: unknown; model?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return new Response('Invalid JSON body', { status: 400 });
+    return apiError(400, 'invalid_json', 'Invalid JSON body');
   }
 
   const patch: { title?: string; model?: string } = {};
   if (typeof body.title === 'string') {
     const title = body.title.trim();
     if (title.length < 1 || title.length > 100) {
-      return new Response('title must be 1-100 characters', { status: 400 });
+      return apiError(400, 'invalid_request', 'title must be 1-100 characters');
     }
     patch.title = title;
   }
   if (body.model !== undefined) {
     if (!isModelKey(body.model)) {
-      return new Response('Unknown model key', { status: 400 });
+      return apiError(400, 'invalid_request', 'Unknown model key');
     }
     patch.model = body.model;
   }
   if (Object.keys(patch).length === 0) {
-    return new Response('Nothing to update', { status: 400 });
+    return apiError(400, 'invalid_request', 'Nothing to update');
   }
 
   const conversation = await updateConversation(userId, id, patch);
   if (!conversation) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
   return Response.json(conversation);
 }
@@ -65,12 +73,15 @@ export async function PATCH(request: Request, context: RouteContext) {
 export async function DELETE(_request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Conversation not found');
+  }
   const deleted = await deleteConversation(userId, id);
   if (!deleted) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
   return Response.json({ success: true });
 }

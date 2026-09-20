@@ -13,7 +13,7 @@
  * （经典域名实测可用；官方新式工作空间子域名亦可）
  */
 import { randomUUID } from 'node:crypto';
-import { artifactObjectKey, getSignedUrl, putObject } from '../src/lib/oss';
+import { assetObjectKey, getSignedUrl, putObject } from '../src/lib/oss';
 
 const BASE_URL = process.env.DASHSCOPE_BASE_URL ?? 'https://dashscope.aliyuncs.com';
 const API_KEY = process.env.DASHSCOPE_API_KEY;
@@ -100,7 +100,7 @@ async function persistToOss(candidateKey: string, temporaryUrl: string): Promise
   }
   console.log(`  下载: ${(buffer.byteLength / 1024).toFixed(0)} KB，PNG 魔数校验通过`);
 
-  const key = artifactObjectKey('smoke', `${candidateKey}-${randomUUID()}`, 'png');
+  const key = assetObjectKey('smoke', `${candidateKey}-${randomUUID()}`, 'png');
   await putObject(key, buffer, 'image/png');
   console.log(`  OSS: ${key}`);
 

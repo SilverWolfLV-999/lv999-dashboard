@@ -22,3 +22,8 @@ export function formatBytes(
     sizeType === 'accurate' ? (accurateSizes[i] ?? 'Bytest') : (sizes[i] ?? 'Bytes')
   }`;
 }
+
+/** 是否为合法 UUID（路由路径参数校验用；非法格式按「不存在」处理，避免直达数据库报错） */
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}

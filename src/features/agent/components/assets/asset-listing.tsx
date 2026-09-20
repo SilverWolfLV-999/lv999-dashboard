@@ -2,12 +2,12 @@ import { auth } from '@clerk/nextjs/server';
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { getQueryClient } from '@/lib/query-client';
 import { searchParamsCache } from '@/lib/searchparams';
-import { artifactsQueryOptions } from '../../api/queries';
-import { listArtifacts } from '../../api/service';
-import type { ArtifactFilters } from '../../api/types';
-import { ArtifactsTable } from './artifact-tables';
+import { assetsQueryOptions } from '../../api/queries';
+import { listAssets } from '../../api/service';
+import type { AssetFilters } from '../../api/types';
+import { AssetsTable } from './asset-tables';
 
-export default async function ArtifactListingPage() {
+export default async function AssetListingPage() {
   const { userId } = await auth();
   if (!userId) return null;
 
@@ -17,7 +17,7 @@ export default async function ArtifactListingPage() {
   const kind = searchParamsCache.get('kind');
   const sort = searchParamsCache.get('sort');
 
-  const filters: ArtifactFilters = {
+  const filters: AssetFilters = {
     page,
     limit,
     ...(title && { search: title }),
@@ -27,13 +27,13 @@ export default async function ArtifactListingPage() {
 
   const queryClient = getQueryClient();
   void queryClient.prefetchQuery({
-    queryKey: artifactsQueryOptions(filters).queryKey,
-    queryFn: () => listArtifacts(userId, filters)
+    queryKey: assetsQueryOptions(filters).queryKey,
+    queryFn: () => listAssets(userId, filters)
   });
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <ArtifactsTable />
+      <AssetsTable />
     </HydrationBoundary>
   );
 }

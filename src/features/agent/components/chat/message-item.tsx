@@ -6,8 +6,8 @@ import { memo } from 'react';
 import { Streamdown } from 'streamdown';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { Message, MessageContent } from '@/components/ui/message';
-import { ToolArtifactPart, type CreateArtifactToolPart } from './tool-artifact-part';
-import { ToolImagePart, type CreateImageArtifactToolPart } from './tool-image-part';
+import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
+import { ToolImagePart, type CreateImageAssetToolPart } from './tool-image-part';
 
 /**
  * 消息项：memo 化（props 仅 message / isActive）。
@@ -53,20 +53,20 @@ export const MessageItem = memo(function MessageItem({
               </div>
             );
           }
-          if (isToolUIPart(part) && part.type === 'tool-createArtifact') {
+          if (isToolUIPart(part) && part.type === 'tool-createAsset') {
             return (
-              <ToolArtifactPart
+              <ToolAssetPart
                 key={index}
-                part={part as unknown as CreateArtifactToolPart}
+                part={part as unknown as CreateAssetToolPart}
                 active={isActive}
               />
             );
           }
-          if (isToolUIPart(part) && part.type === 'tool-createImageArtifact') {
+          if (isToolUIPart(part) && part.type === 'tool-createImageAsset') {
             return (
               <ToolImagePart
                 key={index}
-                part={part as unknown as CreateImageArtifactToolPart}
+                part={part as unknown as CreateImageAssetToolPart}
                 active={isActive}
               />
             );

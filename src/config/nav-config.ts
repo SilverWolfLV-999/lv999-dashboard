@@ -69,8 +69,8 @@ export const navGroups: NavGroup[] = [
         items: []
       },
       {
-        title: '产物中心',
-        url: '/dashboard/agent/artifacts',
+        title: '我的资产',
+        url: '/dashboard/assets',
         icon: 'post',
         shortcut: ['a', 'p'],
         isActive: false,

@@ -1,24 +1,19 @@
 import { queryOptions } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type {
-  ArtifactDetail,
-  ArtifactFilters,
-  ArtifactsResponse,
-  ConversationsResponse
-} from './types';
+import type { AssetDetail, AssetFilters, AssetsResponse, ConversationsResponse } from './types';
 
 export const agentKeys = {
   all: ['agent'] as const,
   conversations: () => [...agentKeys.all, 'conversations'] as const,
-  /** 产物列表域根 key：按域失效时使用（避免 agentKeys.all 连带失效无关查询） */
-  artifactsRoot: () => [...agentKeys.all, 'artifacts'] as const,
-  artifacts: (filters: ArtifactFilters) => [...agentKeys.artifactsRoot(), filters] as const,
-  /** 产物详情域根 key */
-  artifactRoot: () => [...agentKeys.all, 'artifact'] as const,
-  artifact: (id: string) => [...agentKeys.artifactRoot(), id] as const
+  /** 资产列表域根 key：按域失效时使用（避免 agentKeys.all 连带失效无关查询） */
+  assetsRoot: () => [...agentKeys.all, 'assets'] as const,
+  assets: (filters: AssetFilters) => [...agentKeys.assetsRoot(), filters] as const,
+  /** 资产详情域根 key */
+  assetRoot: () => [...agentKeys.all, 'asset'] as const,
+  asset: (id: string) => [...agentKeys.assetRoot(), id] as const
 };
 
-export function buildArtifactQuery(filters: ArtifactFilters): string {
+export function buildAssetQuery(filters: AssetFilters): string {
   const params = new URLSearchParams();
   if (filters.page) params.set('page', String(filters.page));
   if (filters.limit) params.set('limit', String(filters.limit));
@@ -34,14 +29,14 @@ export const conversationsQueryOptions = () =>
     queryFn: () => apiClient<ConversationsResponse>('/agent/conversations')
   });
 
-export const artifactsQueryOptions = (filters: ArtifactFilters) =>
+export const assetsQueryOptions = (filters: AssetFilters) =>
   queryOptions({
-    queryKey: agentKeys.artifacts(filters),
-    queryFn: () => apiClient<ArtifactsResponse>(`/agent/artifacts?${buildArtifactQuery(filters)}`)
+    queryKey: agentKeys.assets(filters),
+    queryFn: () => apiClient<AssetsResponse>(`/agent/assets?${buildAssetQuery(filters)}`)
   });
 
-export const artifactQueryOptions = (id: string) =>
+export const assetQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: agentKeys.artifact(id),
-    queryFn: () => apiClient<ArtifactDetail>(`/agent/artifacts/${id}`)
+    queryKey: agentKeys.asset(id),
+    queryFn: () => apiClient<AssetDetail>(`/agent/assets/${id}`)
   });

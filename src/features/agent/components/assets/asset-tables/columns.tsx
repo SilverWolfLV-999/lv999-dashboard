@@ -1,0 +1,116 @@
+'use client';
+
+import { useState } from 'react';
+import dynamic from 'next/dynamic';
+import type { Column, ColumnDef } from '@tanstack/react-table';
+import { Badge } from '@/components/ui/badge';
+import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
+import { Icons } from '@/components/icons';
+import { ASSET_KIND_META, ASSET_KINDS, getAssetKindMeta } from '../../../constants/kinds';
+import type { Asset } from '../../../api/types';
+import { formatBytes, formatDateTime } from '../../../lib/format';
+import { CellAction } from './cell-action';
+
+/**
+ * 预览弹窗含完整 Markdown 渲染链（streamdown 约 99KB 未压缩），按需加载：
+ * 不打开预览则不下载该 chunk（bundle-dynamic-imports）。
+ */
+const AssetPreviewDialog = dynamic(
+  () => import('../asset-preview-dialog').then((m) => m.AssetPreviewDialog),
+  { ssr: false }
+);
+
+/** 标题单元格：点击打开预览弹窗（资产视角，不再深链到来源会话） */
+function AssetTitleCell({ assetId, title }: { assetId: string; title: string }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMounted, setPreviewMounted] = useState(false);
+
+  // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
+  const openPreview = () => {
+    setPreviewMounted(true);
+    setPreviewOpen(true);
+  };
+
+  return (
+    <>
+      <button type='button' onClick={openPreview} className='font-medium hover:underline'>
+        {title}
+      </button>
+      {previewMounted && (
+        <AssetPreviewDialog assetId={assetId} open={previewOpen} onOpenChange={setPreviewOpen} />
+      )}
+    </>
+  );
+}
+
+export const columns: ColumnDef<Asset>[] = [
+  {
+    id: 'title',
+    accessorKey: 'title',
+    header: ({ column }: { column: Column<Asset, unknown> }) => (
+      <DataTableColumnHeader column={column} title='标题' />
+    ),
+    cell: ({ row }) => <AssetTitleCell assetId={row.original.id} title={row.original.title} />,
+    meta: {
+      label: '标题',
+      placeholder: '搜索资产标题...',
+      variant: 'text' as const,
+      icon: Icons.text
+    },
+    enableColumnFilter: true
+  },
+  {
+    id: 'kind',
+    accessorKey: 'kind',
+    enableSorting: false,
+    header: ({ column }: { column: Column<Asset, unknown> }) => (
+      <DataTableColumnHeader column={column} title='类型' />
+    ),
+    cell: ({ row }) => {
+      const { label, icon: KindIcon } = getAssetKindMeta(row.original.kind);
+      return (
+        <Badge variant='outline'>
+          <KindIcon className='size-3' />
+          {label}
+        </Badge>
+      );
+    },
+    enableColumnFilter: true,
+    meta: {
+      label: '类型',
+      variant: 'multiSelect' as const,
+      options: ASSET_KINDS.map((kind) => ({
+        label: ASSET_KIND_META[kind].label,
+        value: kind
+      }))
+    }
+  },
+  {
+    id: 'sizeBytes',
+    accessorKey: 'sizeBytes',
+    header: ({ column }: { column: Column<Asset, unknown> }) => (
+      <DataTableColumnHeader column={column} title='大小' />
+    ),
+    cell: ({ row }) => (
+      <span className='text-muted-foreground text-sm'>
+        {formatBytes(row.original.sizeBytes ?? 0)}
+      </span>
+    )
+  },
+  {
+    id: 'createdAt',
+    accessorKey: 'createdAt',
+    header: ({ column }: { column: Column<Asset, unknown> }) => (
+      <DataTableColumnHeader column={column} title='创建时间' />
+    ),
+    cell: ({ row }) => (
+      <span className='text-muted-foreground text-sm'>
+        {formatDateTime(row.original.createdAt)}
+      </span>
+    )
+  },
+  {
+    id: 'actions',
+    cell: ({ row }) => <CellAction data={row.original} />
+  }
+];

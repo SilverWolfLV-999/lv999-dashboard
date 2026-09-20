@@ -3,15 +3,15 @@ import type { UIMessage } from 'ai';
 import { and, asc, count, desc, eq, gt, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { cache } from 'react';
 import { getDb } from '@/lib/db';
-import { artifacts, conversations, messages } from '@/lib/db/schema';
-import { artifactObjectKey, getOssClient, putObject } from '@/lib/oss';
+import { assets, conversations, messages } from '@/lib/db/schema';
+import { assetObjectKey, getOssClient, putObject } from '@/lib/oss';
 import { DEFAULT_CONVERSATION_TITLE, buildConversationTitle } from '../constants/conversation';
 import type {
-  Artifact,
-  ArtifactDetail,
-  ArtifactFilters,
-  ArtifactsResponse,
-  ArtifactKind,
+  Asset,
+  AssetDetail,
+  AssetFilters,
+  AssetsResponse,
+  AssetKind,
   ChatMessage,
   Conversation
 } from './types';
@@ -23,7 +23,7 @@ import type {
 
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
-type ArtifactRow = typeof artifacts.$inferSelect;
+type AssetRow = typeof assets.$inferSelect;
 
 function toConversation(row: ConversationRow): Conversation {
   return {
@@ -47,11 +47,12 @@ function toChatMessage(row: MessageRow): ChatMessage {
   };
 }
 
-function toArtifact(row: ArtifactRow): Artifact {
+function toAsset(row: AssetRow): Asset {
   return {
     id: row.id,
     conversationId: row.conversationId,
-    kind: row.kind as ArtifactKind,
+    source: row.source as Asset['source'],
+    kind: row.kind as AssetKind,
     title: row.title,
     status: row.status,
     mime: row.mime,
@@ -318,24 +319,25 @@ export async function syncConversationMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Artifacts
+// Assets
 // ---------------------------------------------------------------------------
 
-export async function createArtifact(params: {
+export async function createAsset(params: {
   userId: string;
   conversationId: string;
   title: string;
-  kind: ArtifactKind;
+  kind: AssetKind;
   content: string;
 }): Promise<{ id: string; sizeBytes: number }> {
   const db = getDb();
   const sizeBytes = Buffer.byteLength(params.content, 'utf8');
   const mime = params.kind === 'html' ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8';
   const rows = await db
-    .insert(artifacts)
+    .insert(assets)
     .values({
       userId: params.userId,
       conversationId: params.conversationId,
+      source: 'agent',
       title: params.title,
       kind: params.kind,
       content: params.content,
@@ -343,15 +345,15 @@ export async function createArtifact(params: {
       sizeBytes,
       status: 'ready'
     })
-    .returning({ id: artifacts.id });
+    .returning({ id: assets.id });
   return { id: rows[0].id, sizeBytes };
 }
 
 /**
- * 图片产物：应用层预生成 artifactId → 转存 OSS → 一次性 insert 全字段
+ * 图片资产：应用层预生成 assetId → 转存 OSS → 一次性 insert 全字段
  * （避免「先插后更」的两次写库；prompt 存 content 列可溯源/可重试）。
  */
-export async function createImageArtifact(params: {
+export async function createImageAsset(params: {
   userId: string;
   conversationId: string;
   title: string;
@@ -359,16 +361,17 @@ export async function createImageArtifact(params: {
   imageBuffer: Buffer;
   mime: string;
 }): Promise<{ id: string; sizeBytes: number }> {
-  const artifactId = randomUUID();
-  const storageKey = artifactObjectKey(params.userId, artifactId, 'png');
+  const assetId = randomUUID();
+  const storageKey = assetObjectKey(params.userId, assetId, 'png');
   await putObject(storageKey, params.imageBuffer, params.mime);
 
   const sizeBytes = params.imageBuffer.byteLength;
   const db = getDb();
-  await db.insert(artifacts).values({
-    id: artifactId,
+  await db.insert(assets).values({
+    id: assetId,
     userId: params.userId,
     conversationId: params.conversationId,
+    source: 'agent',
     title: params.title,
     kind: 'image',
     content: params.prompt,
@@ -377,93 +380,87 @@ export async function createImageArtifact(params: {
     sizeBytes,
     status: 'ready'
   });
-  return { id: artifactId, sizeBytes };
+  return { id: assetId, sizeBytes };
 }
 
-function parseArtifactOrderBy(sort?: string): SQL {
-  if (!sort) return desc(artifacts.createdAt);
+function parseAssetOrderBy(sort?: string): SQL {
+  if (!sort) return desc(assets.createdAt);
   try {
     const parsed = JSON.parse(sort) as { id?: string; desc?: boolean }[];
     const first = Array.isArray(parsed) ? parsed[0] : undefined;
     const direction = first?.desc ? desc : asc;
     switch (first?.id) {
       case 'title':
-        return direction(artifacts.title);
+        return direction(assets.title);
       case 'sizeBytes':
-        return direction(artifacts.sizeBytes);
+        return direction(assets.sizeBytes);
       case 'createdAt':
-        return direction(artifacts.createdAt);
+        return direction(assets.createdAt);
       default:
-        return desc(artifacts.createdAt);
+        return desc(assets.createdAt);
     }
   } catch {
-    return desc(artifacts.createdAt);
+    return desc(assets.createdAt);
   }
 }
 
-export async function listArtifacts(
-  userId: string,
-  filters: ArtifactFilters
-): Promise<ArtifactsResponse> {
+export async function listAssets(userId: string, filters: AssetFilters): Promise<AssetsResponse> {
   const db = getDb();
   const page = Math.max(1, filters.page ?? 1);
   const limit = Math.min(100, Math.max(1, filters.limit ?? 10));
 
-  const conditions = [eq(artifacts.userId, userId)];
+  const conditions = [eq(assets.userId, userId)];
   if (filters.search) {
-    conditions.push(ilike(artifacts.title, `%${filters.search}%`));
+    conditions.push(ilike(assets.title, `%${filters.search}%`));
   }
   const kinds = filters.kind
     ?.split(',')
     .map((value) => value.trim())
     .filter(Boolean);
   if (kinds && kinds.length > 0) {
-    conditions.push(inArray(artifacts.kind, kinds));
+    conditions.push(inArray(assets.kind, kinds));
   }
   const where = and(...conditions);
 
   // count 与分页数据互不依赖，并行执行（async-parallel）
   const [[{ total }], rows] = await Promise.all([
-    db.select({ total: count() }).from(artifacts).where(where),
+    db.select({ total: count() }).from(assets).where(where),
     db
       .select()
-      .from(artifacts)
+      .from(assets)
       .where(where)
-      .orderBy(parseArtifactOrderBy(filters.sort))
+      .orderBy(parseAssetOrderBy(filters.sort))
       .limit(limit)
       .offset((page - 1) * limit)
   ]);
 
   return {
-    artifacts: rows.map(toArtifact),
+    assets: rows.map(toAsset),
     total: Number(total),
     page,
     limit
   };
 }
 
-export async function getArtifact(
-  userId: string,
-  artifactId: string
-): Promise<ArtifactDetail | undefined> {
+export async function getAsset(userId: string, assetId: string): Promise<AssetDetail | undefined> {
   const db = getDb();
   const rows = await db
     .select()
-    .from(artifacts)
-    .where(and(eq(artifacts.id, artifactId), eq(artifacts.userId, userId)))
+    .from(assets)
+    .where(and(eq(assets.id, assetId), eq(assets.userId, userId)))
     .limit(1);
   const row = rows[0];
   if (!row) return undefined;
   // previewUrl 由调用方（详情端点）签发：data access 层不关心签名过期策略
-  return { ...toArtifact(row), content: row.content, storageKey: row.storageKey, previewUrl: null };
+  return { ...toAsset(row), content: row.content, storageKey: row.storageKey, previewUrl: null };
 }
 
-export async function deleteArtifact(userId: string, artifactId: string): Promise<boolean> {
+export async function deleteAsset(userId: string, assetId: string): Promise<boolean> {
   const db = getDb();
   const rows = await db
-    .delete(artifacts)
-    .where(and(eq(artifacts.id, artifactId), eq(artifacts.userId, userId)))
-    .returning({ id: artifacts.id, storageKey: artifacts.storageKey });
+    .delete(assets)
+    .where(and(eq(assets.id, assetId), eq(assets.userId, userId)))
+    .returning({ id: assets.id, storageKey: assets.storageKey });
   if (rows.length === 0) return false;
 
   // OSS 对象顺带删除；失败仅告警不阻塞（DB 行已删，残留对象无访问路径）

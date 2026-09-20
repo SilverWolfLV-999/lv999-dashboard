@@ -14,33 +14,29 @@ import {
 import { Icons } from '@/components/icons';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { getArtifactKindMeta } from '../../constants/kinds';
-import { artifactQueryOptions } from '../../api/queries';
-import { downloadArtifact } from '../../lib/artifact-download';
+import { getAssetKindMeta } from '../../constants/kinds';
+import { assetQueryOptions } from '../../api/queries';
+import { downloadAsset } from '../../lib/asset-download';
 import { formatBytes } from '../../lib/format';
 
-interface ArtifactPreviewDialogProps {
-  artifactId: string;
+interface AssetPreviewDialogProps {
+  assetId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 /**
- * 产物预览弹窗。
+ * 资产预览弹窗。
  * Markdown 用 Streamdown 渲染；HTML 一律放入 sandbox="allow-scripts" 的 iframe
- * （不加 allow-same-origin），与主站隔离，防止产物脚本访问父页面会话；
+ * （不加 allow-same-origin），与主站隔离，防止资产脚本访问父页面会话；
  * 图片走详情端点签发的 previewUrl（私有桶签名访问，不公开桶）。
  */
-export function ArtifactPreviewDialog({
-  artifactId,
-  open,
-  onOpenChange
-}: ArtifactPreviewDialogProps) {
+export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreviewDialogProps) {
   const { data, isLoading, isError, error } = useQuery({
-    ...artifactQueryOptions(artifactId),
+    ...assetQueryOptions(assetId),
     enabled: open
   });
-  // 产物可能已在产物中心被删除：区分 404，给出明确文案
+  // 资产可能已被删除：区分 404，给出明确文案
   const notFound = error instanceof ApiError && error.status === 404;
 
   return (
@@ -48,17 +44,17 @@ export function ArtifactPreviewDialog({
       <DialogContent className='flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl'>
         <DialogHeader className='flex shrink-0 flex-row items-center justify-between gap-3 border-b px-4 py-3 pr-12'>
           <div className='min-w-0'>
-            <DialogTitle className='truncate'>{data?.title ?? '产物预览'}</DialogTitle>
-            <DialogDescription className='sr-only'>产物内容预览</DialogDescription>
+            <DialogTitle className='truncate'>{data?.title ?? '资产预览'}</DialogTitle>
+            <DialogDescription className='sr-only'>资产内容预览</DialogDescription>
           </div>
           <div className='flex shrink-0 items-center gap-2'>
-            {data && <Badge variant='outline'>{getArtifactKindMeta(data.kind).label}</Badge>}
+            {data && <Badge variant='outline'>{getAssetKindMeta(data.kind).label}</Badge>}
             {data?.sizeBytes != null && (
               <span className='text-muted-foreground text-xs'>{formatBytes(data.sizeBytes)}</span>
             )}
             <button
               type='button'
-              onClick={() => void downloadArtifact(artifactId)}
+              onClick={() => void downloadAsset(assetId)}
               className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
             >
               <Icons.download /> 下载
@@ -69,7 +65,7 @@ export function ArtifactPreviewDialog({
           {isLoading && <div className='text-muted-foreground p-6 text-sm'>加载中…</div>}
           {isError && (
             <div className='text-destructive p-6 text-sm'>
-              {notFound ? '该产物已被删除。' : '加载产物失败，请稍后重试。'}
+              {notFound ? '该资产已被删除。' : '加载资产失败，请稍后重试。'}
             </div>
           )}
           {data?.kind === 'html' && (

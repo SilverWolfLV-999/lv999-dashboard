@@ -23,12 +23,17 @@ export interface ConversationsResponse {
   conversations: Conversation[];
 }
 
-export type ArtifactKind = 'markdown' | 'html' | 'image';
+export type AssetKind = 'markdown' | 'html' | 'image';
 
-export interface Artifact {
+/** 资产来源：agent 生成 / 用户上传 */
+export type AssetSource = 'agent' | 'upload';
+
+export interface Asset {
   id: string;
-  conversationId: string;
-  kind: ArtifactKind;
+  /** 来源会话（可空）：上传资产无会话；会话删除后置空，资产保留 */
+  conversationId: string | null;
+  source: AssetSource;
+  kind: AssetKind;
   title: string;
   status: string;
   mime: string | null;
@@ -37,15 +42,15 @@ export interface Artifact {
   updatedAt: string;
 }
 
-export interface ArtifactDetail extends Artifact {
+export interface AssetDetail extends Asset {
   content: string | null;
-  /** OSS 对象 key（图片等二进制产物非空；详情端点据此签发 previewUrl） */
+  /** OSS 对象 key（图片等二进制资产非空；详情端点据此签发 previewUrl） */
   storageKey: string | null;
-  /** 图片产物签名预览 URL（3600s 有效，刷新会话后重新签发）；非图片或未签发为 null */
+  /** 图片资产签名预览 URL（3600s 有效，刷新后重新签发）；非图片或未签发为 null */
   previewUrl: string | null;
 }
 
-export interface ArtifactFilters {
+export interface AssetFilters {
   page?: number;
   limit?: number;
   search?: string;
@@ -54,8 +59,8 @@ export interface ArtifactFilters {
   sort?: string;
 }
 
-export interface ArtifactsResponse {
-  artifacts: Artifact[];
+export interface AssetsResponse {
+  assets: Asset[];
   total: number;
   page: number;
   limit: number;

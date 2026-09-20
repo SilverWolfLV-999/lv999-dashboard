@@ -56,9 +56,9 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
       })
     }),
     onFinish: () => {
-      // 分域失效：会话列表（标题/updatedAt 变化）+ 产物列表（聊天中可能新增产物）
+      // 分域失效：会话列表（标题/updatedAt 变化）+ 资产列表（聊天中可能新增资产）
       void queryClient.invalidateQueries({ queryKey: agentKeys.conversations() });
-      void queryClient.invalidateQueries({ queryKey: agentKeys.artifactsRoot() });
+      void queryClient.invalidateQueries({ queryKey: agentKeys.assetsRoot() });
     }
   });
 

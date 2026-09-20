@@ -2,6 +2,8 @@ import { auth } from '@clerk/nextjs/server';
 import { UI_MESSAGE_STREAM_HEADERS } from 'ai';
 import { after } from 'next/server';
 import { createResumableStreamContext } from 'resumable-stream';
+import { apiError } from '@/lib/api-error';
+import { isUuid } from '@/lib/utils';
 import { clearConversationActiveStream, getConversation } from '@/features/agent/api/service';
 
 export const runtime = 'nodejs';
@@ -16,13 +18,16 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(_request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
 
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Conversation not found');
+  }
   const conversation = await getConversation(userId, id);
   if (!conversation) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
 
   const activeStreamId = conversation.activeStreamId;

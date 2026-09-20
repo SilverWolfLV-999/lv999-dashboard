@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
-import { listArtifacts } from '@/features/agent/api/service';
-import type { ArtifactFilters } from '@/features/agent/api/types';
+import { apiError } from '@/lib/api-error';
+import { listAssets } from '@/features/agent/api/service';
+import type { AssetFilters } from '@/features/agent/api/types';
 
 export const runtime = 'nodejs';
 
@@ -13,11 +14,11 @@ function parseInteger(value: string | null): number | undefined {
 export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
 
   const { searchParams } = new URL(request.url);
-  const filters: ArtifactFilters = {
+  const filters: AssetFilters = {
     page: parseInteger(searchParams.get('page')),
     limit: parseInteger(searchParams.get('limit')),
     search: searchParams.get('search') ?? undefined,
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     sort: searchParams.get('sort') ?? undefined
   };
 
-  const result = await listArtifacts(userId, filters);
+  const result = await listAssets(userId, filters);
   return Response.json(result);
 }

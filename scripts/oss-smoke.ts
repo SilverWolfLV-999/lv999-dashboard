@@ -5,9 +5,9 @@
  * 运行：bun run scripts/oss-smoke.ts
  * 前置：.env.local 中配置 OSS_REGION / OSS_BUCKET / OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
  */
-import { artifactObjectKey, getSignedUrl, putObject } from '../src/lib/oss';
+import { assetObjectKey, getSignedUrl, putObject } from '../src/lib/oss';
 
-const key = artifactObjectKey('smoke-test', `oss-smoke-${Date.now()}`, 'txt');
+const key = assetObjectKey('smoke-test', `oss-smoke-${Date.now()}`, 'txt');
 
 await putObject(
   key,

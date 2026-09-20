@@ -1,5 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import type { UIMessage } from 'ai';
+import { apiError } from '@/lib/api-error';
+import { isUuid } from '@/lib/utils';
 import {
   clearConversationActiveStream,
   getConversation,
@@ -22,22 +24,29 @@ type RouteContext = { params: Promise<{ id: string }> };
  * 1) 保存客户端部分快照（只插不覆盖，避免旧快照覆盖服务端更新版本）
  * 2) 写入停止信号，生产者轮询后 abort 生成（部分内容由服务端权威落库）
  * 3) 校验后清理 activeStreamId（若仍指向同一流，避免误清之后启动的新流）
+ *
+ * 注：请求体解析失败时按空对象继续——停止是尽力而为的控制通道，保持始终可用。
  */
 export async function POST(request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
 
   // 速率限制（按用户，从宽）：防止滥用停止端点
   if (!(await checkRateLimit('stop', userId, STOP_RATE_LIMIT, STOP_RATE_LIMIT_WINDOW_SECONDS))) {
-    return new Response('Too many requests', { status: 429 });
+    return apiError(429, 'too_many_requests', 'Too many requests', {
+      'Retry-After': String(STOP_RATE_LIMIT_WINDOW_SECONDS)
+    });
   }
 
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return apiError(404, 'not_found', 'Conversation not found');
+  }
   const conversation = await getConversation(userId, id);
   if (!conversation) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
 
   const activeStreamId = conversation.activeStreamId;
@@ -48,7 +57,7 @@ export async function POST(request: Request, context: RouteContext) {
   // 请求体大小上限（复用 chat 路由的 4MB 约定）：assistantMessage 会原样入库，先设防
   const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, 'utf8') > MAX_REQUEST_BYTES) {
-    return new Response('Request body too large', { status: 413 });
+    return apiError(413, 'payload_too_large', 'Request body too large');
   }
   let body: { activeStreamId?: string | null; assistantMessage?: UIMessage };
   try {

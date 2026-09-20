@@ -6,13 +6,13 @@ import { useDataTable } from '@/hooks/use-data-table';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { parseAsArrayOf, parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import { getSortingStateParser } from '@/lib/parsers';
-import { artifactsQueryOptions } from '../../../api/queries';
-import type { ArtifactFilters } from '../../../api/types';
+import { assetsQueryOptions } from '../../../api/queries';
+import type { AssetFilters } from '../../../api/types';
 import { columns } from './columns';
 
 const columnIds = columns.map((column) => column.id).filter(Boolean) as string[];
 
-export function ArtifactsTable() {
+export function AssetsTable() {
   const [params] = useQueryStates({
     page: parseAsInteger.withDefault(1),
     perPage: parseAsInteger.withDefault(10),
@@ -21,7 +21,7 @@ export function ArtifactsTable() {
     sort: getSortingStateParser(columnIds).withDefault([])
   });
 
-  const filters: ArtifactFilters = {
+  const filters: AssetFilters = {
     page: params.page,
     limit: params.perPage,
     ...(params.title && { search: params.title }),
@@ -29,11 +29,11 @@ export function ArtifactsTable() {
     ...(params.sort.length > 0 && { sort: JSON.stringify(params.sort) })
   };
 
-  const { data } = useSuspenseQuery(artifactsQueryOptions(filters));
+  const { data } = useSuspenseQuery(assetsQueryOptions(filters));
   const pageCount = Math.ceil(data.total / params.perPage);
 
   const { table } = useDataTable({
-    data: data.artifacts,
+    data: data.assets,
     columns,
     pageCount,
     shallow: true,

@@ -1,26 +1,23 @@
 import PageContainer from '@/components/layout/page-container';
-import ArtifactListingPage from '@/features/agent/components/artifacts/artifact-listing';
+import AssetListingPage from '@/features/agent/components/assets/asset-listing';
 import { searchParamsCache } from '@/lib/searchparams';
 import type { SearchParams } from 'nuqs/server';
 
 export const metadata = {
-  title: 'Dashboard: 产物中心'
+  title: 'Dashboard: 我的资产'
 };
 
 type PageProps = {
   searchParams: Promise<SearchParams>;
 };
 
-export default async function ArtifactsPage(props: PageProps) {
+export default async function AssetsPage(props: PageProps) {
   const searchParams = await props.searchParams;
   searchParamsCache.parse(searchParams);
 
   return (
-    <PageContainer
-      pageTitle='产物中心'
-      pageDescription='Agent 生成的全部 Markdown / HTML 产物，可预览、下载与删除。'
-    >
-      <ArtifactListingPage />
+    <PageContainer pageTitle='我的资产' pageDescription='全部创作资产，可预览、下载与删除。'>
+      <AssetListingPage />
     </PageContainer>
   );
 }

@@ -3,7 +3,7 @@ import OSS from 'ali-oss';
 /**
  * 阿里云 OSS 封装（Phase 0 基建）。
  *
- * Phase 1 的文本产物内容存 Postgres（阿里云 RDS）；Phase 2 起图片/视频等二进制产物使用本模块：
+ * Phase 1 的文本资产内容存 Postgres（阿里云 RDS）；Phase 2 起图片/视频等二进制资产使用本模块：
  * 上传到 OSS，数据库仅存 storage_key，读取时用签名 URL 直连 OSS。
  */
 
@@ -27,9 +27,9 @@ export function getOssClient(): OSS {
   return client;
 }
 
-/** 产物对象的存储路径约定 */
-export function artifactObjectKey(userId: string, artifactId: string, extension: string): string {
-  return `artifacts/${userId}/${artifactId}.${extension}`;
+/** 资产对象的存储路径约定（服务端写入路径；路径约定的变更需同步清理旧前缀对象） */
+export function assetObjectKey(userId: string, assetId: string, extension: string): string {
+  return `assets/${userId}/${assetId}.${extension}`;
 }
 
 export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {

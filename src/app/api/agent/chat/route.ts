@@ -29,6 +29,7 @@ import {
 import { requestAgentStop, watchAgentStop } from '@/features/agent/api/stop-signal';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
 import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
+import { apiError } from '@/lib/api-error';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -48,7 +49,7 @@ function extractText(message: UIMessage): string {
 export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return apiError(401, 'unauthorized', 'Unauthorized');
   }
 
   // 并行组 1：限流与读 body 互不依赖，同时发起、按「限流 → 体积 → 解析」顺序校验
@@ -59,22 +60,24 @@ export async function POST(request: Request) {
     request.text()
   ]);
   if (!allowed) {
-    return new Response('Too many requests', { status: 429 });
+    return apiError(429, 'too_many_requests', 'Too many requests', {
+      'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS)
+    });
   }
   if (Buffer.byteLength(rawBody, 'utf8') > MAX_REQUEST_BYTES) {
-    return new Response('Request body too large', { status: 413 });
+    return apiError(413, 'payload_too_large', 'Request body too large');
   }
   let body: { messages?: unknown; conversationId?: unknown };
   try {
     body = JSON.parse(rawBody) as typeof body;
   } catch {
-    return new Response('Invalid JSON body', { status: 400 });
+    return apiError(400, 'invalid_json', 'Invalid JSON body');
   }
 
   const messages = body.messages as UIMessage[] | undefined;
   const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined;
   if (!Array.isArray(messages) || messages.length === 0 || !conversationId) {
-    return new Response('messages and conversationId are required', { status: 400 });
+    return apiError(400, 'invalid_request', 'messages and conversationId are required');
   }
   if (
     messages.length > MAX_MESSAGES ||
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
       (message) => Array.isArray(message?.parts) && message.parts.length > MAX_PARTS_PER_MESSAGE
     )
   ) {
-    return new Response('Too many messages', { status: 413 });
+    return apiError(413, 'payload_too_large', 'Too many messages');
   }
 
   // 并行组 2：消息校验（CPU）与归属查询（DB）互不依赖；
@@ -100,12 +103,12 @@ export async function POST(request: Request) {
     ]);
   } catch (error) {
     if (TypeValidationError.isInstance(error)) {
-      return new Response('Invalid messages', { status: 400 });
+      return apiError(400, 'invalid_request', 'Invalid messages');
     }
     throw error;
   }
   if (!conversation) {
-    return new Response('Conversation not found', { status: 404 });
+    return apiError(404, 'not_found', 'Conversation not found');
   }
 
   const agent = buildAgent({ userId, conversationId, modelKey: conversation.model });

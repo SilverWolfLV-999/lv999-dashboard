@@ -5,7 +5,9 @@ import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-o
  *
  * - conversations: 会话（含模型选择）
  * - messages: 会话消息（parts 与 AI SDK 的 UIMessage.parts 结构对齐，原样存储）
- * - artifacts: 结构化产物（MVP 文本产物内容存 content 列；Phase 2 二进制走 OSS，只存 storage_key）
+ * - assets: 用户资产（Agent 生成 source='agent' / 用户上传 source='upload'）；
+ *   文本内容存 content 列，二进制走 OSS 只存 storage_key；
+ *   会话删除时 conversationId 置空（SET NULL）、资产保留
  */
 
 export const conversations = pgTable('conversations', {
@@ -34,14 +36,17 @@ export const messages = pgTable(
   (table) => [index('messages_conversation_created_idx').on(table.conversationId, table.createdAt)]
 );
 
-export const artifacts = pgTable(
-  'artifacts',
+export const assets = pgTable(
+  'assets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    conversationId: uuid('conversation_id')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
+    /** 来源会话（可空）：上传资产无会话；会话删除时置空（SET NULL），资产不随会话删除 */
+    conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'set null'
+    }),
     userId: text('user_id').notNull(),
+    /** 资产来源：'agent'（生成）/ 'upload'（导入） */
+    source: text('source').notNull().default('agent'),
     kind: text('kind').notNull(),
     title: text('title').notNull(),
     status: text('status').notNull().default('ready'),
@@ -53,7 +58,7 @@ export const artifacts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
-    index('artifacts_user_created_idx').on(table.userId, table.createdAt),
-    index('artifacts_conversation_idx').on(table.conversationId)
+    index('assets_user_created_idx').on(table.userId, table.createdAt),
+    index('assets_conversation_idx').on(table.conversationId)
   ]
 );
