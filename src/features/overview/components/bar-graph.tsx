@@ -1,6 +1,6 @@
 'use client';
 
-import { Bar, BarChart, XAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -55,7 +55,7 @@ export function BarGraph({ dailyTrend }: BarGraphProps) {
   const total = chartData.reduce((sum, item) => sum + item.generated + item.imported, 0);
 
   return (
-    <Card>
+    <Card className='flex h-full flex-col'>
       <CardHeader>
         <CardTitle>创作量周对比</CardTitle>
         <CardDescription>
@@ -64,20 +64,19 @@ export function BarGraph({ dailyTrend }: BarGraphProps) {
             : '近 30 天还没有新增资产'}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig}>
+      <CardContent className='min-h-0 flex-1'>
+        <ChartContainer config={chartConfig} className='aspect-auto h-full min-h-64'>
           <BarChart accessibilityLayer data={chartData}>
-            <rect
-              x='0'
-              y='0'
-              width='100%'
-              height='85%'
-              fill='url(#default-multiple-pattern-dots)'
-            />
-            <defs>
-              <DottedBackgroundPattern />
-            </defs>
+            <CartesianGrid vertical={false} strokeDasharray='3 3' />
             <XAxis dataKey='label' tickLine={false} tickMargin={10} axisLine={false} />
+            {/* 计数轴：整数刻度 + 无轴线，与趋势图同一套轴语言 */}
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={28}
+              tickMargin={8}
+              allowDecimals={false}
+            />
             <ChartTooltip
               cursor={false}
               content={<ChartTooltipContent indicator='dashed' hideLabel />}
@@ -139,19 +138,5 @@ const CustomHatchedBar = (
         </pattern>
       </defs>
     </>
-  );
-};
-const DottedBackgroundPattern = () => {
-  return (
-    <pattern
-      id='default-multiple-pattern-dots'
-      x='0'
-      y='0'
-      width='10'
-      height='10'
-      patternUnits='userSpaceOnUse'
-    >
-      <circle className='dark:text-muted/40 text-muted' cx='2' cy='2' r='1' fill='currentColor' />
-    </pattern>
   );
 };

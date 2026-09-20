@@ -1,11 +1,13 @@
 'use client';
 
-import { LabelList, Pie, PieChart } from 'recharts';
+import { Pie, PieChart } from 'recharts';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent
 } from '@/components/ui/chart';
@@ -63,28 +65,21 @@ export function PieGraph({ kindCounts }: PieGraphProps) {
         ) : (
           <ChartContainer
             config={chartConfig}
-            className='[&_.recharts-text]:fill-background mx-auto aspect-square max-h-[300px] min-h-[250px]'
+            className='mx-auto aspect-square max-h-[340px] min-h-[250px] w-full'
           >
             <PieChart>
               <ChartTooltip content={<ChartTooltipContent nameKey='kind' hideLabel />} />
+              {/* 常规环形比例：面积与数值成正比；类型辨识交给底部图例而非扇区内白字 */}
               <Pie
                 data={chartData}
-                innerRadius={30}
+                innerRadius='58%'
+                outerRadius='92%'
                 dataKey='count'
                 nameKey='kind'
-                radius={10}
                 cornerRadius={8}
                 paddingAngle={4}
-              >
-                <LabelList
-                  dataKey='count'
-                  stroke='none'
-                  fontSize={12}
-                  fontWeight={500}
-                  fill='currentColor'
-                  formatter={(value) => String(value ?? '')}
-                />
-              </Pie>
+              />
+              <ChartLegend content={<ChartLegendContent nameKey='kind' />} verticalAlign='bottom' />
             </PieChart>
           </ChartContainer>
         )}

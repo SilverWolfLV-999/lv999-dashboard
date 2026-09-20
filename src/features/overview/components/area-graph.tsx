@@ -1,6 +1,6 @@
 'use client';
 
-import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -42,9 +42,12 @@ export function AreaGraph({ dailyTrend }: AreaGraphProps) {
     imported: item.imported
   }));
   const total = dailyTrend.reduce((sum, item) => sum + item.count, 0);
+  // 全零序列不渲染：否则堆叠面积会在零轴上描出一条无信息的横线（如 imported 恒为 0 时的蓝线）
+  const hasGenerated = dailyTrend.some((item) => item.generated > 0);
+  const hasImported = dailyTrend.some((item) => item.imported > 0);
 
   return (
-    <Card>
+    <Card className='flex h-full flex-col'>
       <CardHeader>
         <CardTitle>近 30 天创作趋势</CardTitle>
         <CardDescription>
@@ -53,8 +56,9 @@ export function AreaGraph({ dailyTrend }: AreaGraphProps) {
             : '近 30 天还没有新增资产'}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig}>
+      <CardContent className='min-h-0 flex-1'>
+        {/* h-full：图表高度随行高伸缩（与右列卡片齐平），不再被 aspect-video 拖到 700px+ */}
+        <ChartContainer config={chartConfig} className='aspect-auto h-full min-h-64'>
           <AreaChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} strokeDasharray='3 3' />
             <XAxis
@@ -65,54 +69,41 @@ export function AreaGraph({ dailyTrend }: AreaGraphProps) {
               interval='preserveStartEnd'
               minTickGap={24}
             />
+            {/* 计数轴：整数刻度 + 无轴线，给出零基线与量级参照 */}
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={28}
+              tickMargin={8}
+              allowDecimals={false}
+            />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            <defs>
-              <DottedBackgroundPattern config={chartConfig} />
-            </defs>
-            <Area
-              dataKey='imported'
-              type='natural'
-              fill='url(#dotted-background-pattern-imported)'
-              fillOpacity={0.4}
-              stroke='var(--color-imported)'
-              stackId='a'
-              strokeWidth={0.8}
-            />
-            <Area
-              dataKey='generated'
-              type='natural'
-              fill='url(#dotted-background-pattern-generated)'
-              fillOpacity={0.4}
-              stroke='var(--color-generated)'
-              stackId='a'
-              strokeWidth={0.8}
-            />
+            {/* monotone：计数数据不允许样条过冲穿零（natural 会在脉冲数据上跌到负值） */}
+            {hasImported && (
+              <Area
+                dataKey='imported'
+                type='monotone'
+                fill='var(--color-imported)'
+                fillOpacity={0.1}
+                stroke='var(--color-imported)'
+                stackId='a'
+                strokeWidth={1.5}
+              />
+            )}
+            {hasGenerated && (
+              <Area
+                dataKey='generated'
+                type='monotone'
+                fill='var(--color-generated)'
+                fillOpacity={0.1}
+                stroke='var(--color-generated)'
+                stackId='a'
+                strokeWidth={1.5}
+              />
+            )}
           </AreaChart>
         </ChartContainer>
       </CardContent>
     </Card>
   );
 }
-
-const DottedBackgroundPattern = ({ config }: { config: ChartConfig }) => {
-  const items = Object.fromEntries(
-    Object.entries(config).map(([key, value]) => [key, value.color])
-  );
-  return (
-    <>
-      {Object.entries(items).map(([key, value]) => (
-        <pattern
-          key={key}
-          id={`dotted-background-pattern-${key}`}
-          x='0'
-          y='0'
-          width='7'
-          height='7'
-          patternUnits='userSpaceOnUse'
-        >
-          <circle cx='5' cy='5' r='1.5' fill={value} opacity={0.5}></circle>
-        </pattern>
-      ))}
-    </>
-  );
-};

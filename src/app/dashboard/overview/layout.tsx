@@ -36,7 +36,7 @@ export default async function OverViewLayout({
     <PageContainer>
       <div className='flex flex-1 flex-col gap-4'>
         <div className='flex items-center justify-between'>
-          <h2 className='text-2xl font-bold tracking-tight'>你好，欢迎回来 👋</h2>
+          <h2 className='text-2xl font-bold tracking-tight'>你好，欢迎回来</h2>
         </div>
 
         <StatCards assetStats={assetStats} conversationTotal={conversationStats.total} />
