@@ -135,15 +135,20 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 ## 5. Agent 与工具
 
-`buildAgent()`（[`agent.ts`](../src/features/agent/api/agent.ts)）每请求构建一个 `ToolLoopAgent`：`stopWhen: isStepCount(6)`、`timeout.totalMs: 240_000`、`onStepEnd` / `onEnd` 记录 step / usage。三个工具：
+`buildAgent()`（[`agent.ts`](../src/features/agent/api/agent.ts)）每请求构建一个 `ToolLoopAgent`：`stopWhen: isStepCount(6)`、`timeout.totalMs: 240_000`、`onStepEnd` / `onEnd` 记录 step / usage。工具：
 
 | 工具 | 输入 | 行为 |
 | --- | --- | --- |
 | `createAsset` | `title` / `kind`(markdown\|html) / `content` | 文本作品直接落库 `assets.content`；`≤200KB`（`MAX_ASSET_SIZE_BYTES`）|
 | `createImageAsset` | `title` / `prompt` / `aspect?` | 文生图：生成 → 立即下载 → 转存 OSS → 入库图片资产 |
 | `editImageAsset` | `sourceAssetId` / `title` / `instruction` / `aspect?` | 图生图（I2I）：校验源图归属/kind/`storageKey`/≤10MB → 签名 URL 直传百炼 → 产出派生资产（`sourceAssetId` 记录血缘）|
+| `findAssets` | `query?` / `kind?` / `limit?` | 按标题关键词 + 类型检索用户资产库，返回候选元信息（不含正文/URL）——按【标题】找「作品」供复用/改写 |
+| `readAsset` | `assetId` | 读取资产内容：markdown/html 返回正文、image 返回生成 prompt（design 不支持），供“基于它再创作” |
+| `knowledgeSearch` | `query` / `topK?` | 在 RAG 知识库中按【语义】检索「资料」片段（问答/综述），返回 topK 片段 + 来源标题；见 [docs/knowledge-base.md](./knowledge-base.md) |
 
-工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
+> 区分：`findAssets` 按标题找「作品」（复用/改写/改图）；`knowledgeSearch` 按语义找「资料」（基于内容作答并标注来源）。对话中的 `[引用资产]` 块给出的 id 可直接使用，无需再检索。
+
+工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema，全部工具均同时登记到 validation 集与 `buildAgent.tools`），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
 
 ---
 
@@ -213,6 +218,9 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | PATCH | `/api/agent/assets/[id]` | 更新 design 资产（归属且 `kind==='design'`）|
 | GET | `/api/agent/assets/[id]/download` | 下载（image / design 走 302 签名 URL，文本直接返回）|
 | GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片、规避 canvas 跨域污染）|
+| GET / POST | `/api/agent/knowledge/documents` | 知识库文档列表 / 新增（同步摄取，限流 scope `knowledge` 30/分）——见 knowledge-base.md |
+| DELETE | `/api/agent/knowledge/documents/[id]` | 删除文档（片段级联删除）|
+| POST | `/api/agent/knowledge/documents/[id]/retry` | 重新摄取（失败文档重试）|
 
 ---
 

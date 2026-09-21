@@ -19,6 +19,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 
 - **AI Agent 创作**：自然语言对话驱动的内容创作工作台（`ToolLoopAgent`）；可生成 Markdown / HTML 文本作品与文生图 / 图生图（I2I）图片；基于 `resumable-stream` 的可恢复 SSE 流（刷新 / 切回自动重连），支持跨实例停止生成
 - **设计画布**：基于 Konva 的 Canva/Figma 式画布编辑器；摆放文字 / 图形 / 图片（可引用 Agent 生成的图片资产），选中/移动/缩放/旋转、撤销重做、导出 PNG，产物沉淀为可重新编辑的 `design` 资产
+- **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
 - **我的资产**：Agent 与设计画布的产出统一沉淀为可管理资产；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除，图片经 OSS 签名 URL 访问
 - **总览仪表盘**：统计卡片 + Recharts 图表；基于并行路由（Parallel Routes），每个区块拥有独立的加载与错误状态
 - **数据表格**：服务端预取 + 客户端查询缓存 + 水合（HydrationBoundary），搜索 / 筛选 / 排序 / 分页与 URL 同步（nuqs），`shallow: true` 让交互零 RSC 往返
@@ -41,6 +42,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | 认证 / 组织 | Clerk |
 | AI / Agent | AI SDK v7（`ai` + `@ai-sdk/alibaba` / `@ai-sdk/openai-compatible`），百炼（阿里云 Model Studio） |
 | 设计画布 | Konva + react-konva（2D canvas） |
+| 向量检索 / RAG | pgvector（阿里云 RDS） + 百炼 `text-embedding-v4` embedding |
 | 数据库 / ORM | PostgreSQL（阿里云 RDS） + Drizzle ORM |
 | 对象存储 | 阿里云 OSS（图片等二进制资产） |
 | 缓存 / 流恢复 | Redis（resumable-stream 与停止信号 / 限流） |
@@ -63,6 +65,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | `/dashboard/assets` | 我的资产：资产表格（筛选 / 搜索 / 预览 / 下载 / 删除） |
 | `/dashboard/design` | 设计画布：新建空白画布 |
 | `/dashboard/design/[id]` | 设计画布：打开已存设计继续编辑 |
+| `/dashboard/knowledge` | RAG 知识库：文档管理（新增 / 列表 / 删除 / 重试） |
 | `/dashboard/workspaces` | 工作区管理：Clerk `<OrganizationList />` |
 | `/dashboard/workspaces/team` | 团队管理：Clerk `<OrganizationProfile />`（需激活组织） |
 | `/dashboard/profile` | 个人资料与安全设置（Clerk 账户管理） |
@@ -123,16 +126,17 @@ src/
 │   │   ├── agent/          # Agent 创作（会话列表 + [conversationId] 会话页）
 │   │   ├── assets/         # 我的资产（资产表格）
 │   │   ├── design/         # 设计画布（新建 + [id] 编辑页）
+│   │   ├── knowledge/      # RAG 知识库（文档管理）
 │   │   ├── workspaces/     # 工作区与团队
 │   │   └── profile/        # 个人资料
-│   └── api/agent/          # Route Handlers：chat（SSE 流）/ conversations / assets（含 design 写入与 /raw 代理）
+│   └── api/agent/          # Route Handlers：chat（SSE 流）/ conversations / assets（含 design 写入与 /raw 代理）/ knowledge
 ├── components/
 │   ├── ui/                 # shadcn/ui 组件库
 │   ├── layout/             # 布局（侧边栏、顶栏、Infobar 等）
 │   ├── forms/              # 表单字段组件（Field anatomy）
 │   ├── themes/             # 主题系统
 │   └── kbar/               # ⌘K 命令面板
-├── features/               # 按功能划分的模块（agent、design、auth、overview、profile）
+├── features/               # 按功能划分的模块（agent、design、knowledge、auth、overview、profile）
 │   └── <name>/
 │       ├── api/            # types.ts → service.ts → queries.ts
 │       ├── components/
@@ -142,7 +146,7 @@ src/
 ├── constants/              # Mock 数据
 ├── hooks/                  # 自定义 hooks
 ├── lib/                    # 工具（query-client、searchparams、api-client、oss、redis 等）
-│   └── db/                 # Drizzle schema 与连接（getDb）
+│   └── db/                 # Drizzle schema（含 pgvector 向量列）与连接（getDb）
 ├── styles/                 # 全局样式与主题 CSS
 └── types/                  # 类型定义
 ```
@@ -173,6 +177,10 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 基于 Konva + react-konva 的 Canva/Figma 式画布（纯客户端孤岛，`next/dynamic({ ssr: false })` 挂载）。文档为自持有的可序列化 JSON，作为 `kind='design'` 资产落库（`content` 存文档、`storageKey` 存导出 PNG 预览），**不新增数据库表**。图片对象只存 `assetId` 引用，经同源 `/raw` 代理加载以规避画布跨域污染。完整架构、文档模型、导出与保存链路见 [docs/design-editor.md](./docs/design-editor.md)。
 
+### RAG 知识库
+
+文本知识（手动录入 / 从 markdown、html 资产导入）经切分 → 百炼 `text-embedding-v4` 向量化 → 存入 **pgvector**（`knowledge_documents` / `knowledge_chunks` 两表 + HNSW cosine 索引）。Agent 通过 `knowledgeSearch` 工具按语义检索 topK 片段（阈值过滤低相关），仅依据命中片段作答并标注来源；与 `findAssets`（按标题找作品）区分。复用现有 DASHSCOPE 通道，零新增依赖。完整数据模型、摄取管线、检索与 API 契约见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
+
 ### URL 状态：nuqs
 
 服务端用 `searchParamsCache` 读取，客户端用 `useQueryState(shallow: true)` 写入；表格的分页 / 筛选不触发 RSC 往返，刷新或分享链接也能还原视图。
@@ -201,6 +209,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 - [x] 完整后台骨架：认证 / 多租户 / RBAC / 数据表格 / 表单 / 主题
 - [x] AI Agent 创作模块：对话创作、文生图 / 图生图、资产沉淀，已接入真实后端（PostgreSQL + OSS + Redis + 百炼）
 - [x] 设计画布编辑器：Konva 画布、文字 / 图形 / 图片摆放、导出 PNG、产物沉淀为 `design` 资产
+- [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强
 - [ ] 视频产物（Phase 3：schema 与 OSS 已预留）
 - [ ] 替换预览截图与 OG 图（当前为 AI 生成的宣传图，后期将替换为真实界面截图）
 - [ ] 按需扩展业务模块
