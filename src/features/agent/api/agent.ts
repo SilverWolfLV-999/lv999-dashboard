@@ -7,6 +7,7 @@ import { generateImage } from './image-generation';
 import { editImageAssetCore } from './image-edit';
 import { createAsset, createImageAsset, getAsset, searchAssets } from './service';
 import { ASSET_KIND_VALUES } from './types';
+import { searchKnowledgeByText } from '@/features/knowledge/lib/search';
 import type { AssetKind } from './types';
 
 /** 单个资产的内容上限（字符数按 UTF-8 字节计算） */
@@ -34,10 +35,15 @@ const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，�
    - 命中多个候选时，列出候选请用户确认，或选最相关的一个并说明依据；findAssets 无命中时如实告知并请用户补充线索
    - 基于文本资产（markdown / html）改写或扩展 → 先 readAsset 取正文，再创作并用 createAsset 存为新资产（不要覆盖原资产）
    - 修改图片资产 → 用 editImageAsset（sourceAssetId 传该图 id），不要试图用 readAsset 的提示词去"重画"一张
-6. 一次回复可以产出多个资产（例如"三版文案"= 三个 markdown 资产；或先配图再写文案；或先 markdown 文案再配套 HTML 落地页）。
-7. 保存完成后，用一两句话总结产出了什么，不要重复粘贴完整内容。
-8. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
-9. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
+6. 知识库（knowledgeSearch，按内容语义检索用户沉淀的资料）：
+   - 用户说"我知识库里…""根据我的资料/笔记""基于我沉淀的文档写一版"，或问题必须引用用户自有资料才能作答时，先调 knowledgeSearch（可多次、用不同角度的 query）
+   - 只依据返回的片段作答或创作，并说明引用了哪些文档（用 documentTitle 标注来源）
+   - 无命中时如实告知"知识库中未找到相关资料"，绝不编造；可追问用户是否补充资料
+   - 与 findAssets 的区别：findAssets 按标题关键词找「作品」（用于复用/改写）；knowledgeSearch 按语义找「资料」（用于问答/综述）
+7. 一次回复可以产出多个资产（例如"三版文案"= 三个 markdown 资产；或先配图再写文案；或先 markdown 文案再配套 HTML 落地页）。
+8. 保存完成后，用一两句话总结产出了什么，不要重复粘贴完整内容。
+9. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
+10. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
 
 const CREATE_ASSET_DESCRIPTION =
   '把一份完整作品保存为结构化资产。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。';
@@ -109,6 +115,18 @@ const readAssetInputSchema = z.object({
   assetId: z.string().uuid().describe('要读取的资产 id（必须归属当前用户）')
 });
 
+const KNOWLEDGE_SEARCH_DESCRIPTION =
+  '在用户的知识库（RAG）中按内容语义检索资料片段，返回 results: [{ documentId, documentTitle, chunkIndex, content, score }]（score 为相似度，越大越相关）。当用户说"我知识库里…""根据我的资料/笔记""基于我沉淀的文档写一版"，或问题需要引用用户自有资料才能作答时使用。只依据返回片段作答并用 documentTitle 标注来源；results 为空表示知识库中没有相关资料，应如实告知。与 findAssets 的区别：findAssets 按标题关键词找"作品"（用于复用/改写），knowledgeSearch 按语义找"资料"（用于问答/综述）。';
+
+const knowledgeSearchInputSchema = z.object({
+  query: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe('检索问句：用自然语言描述要找的内容（包含关键概念词效果更好）'),
+  topK: z.number().int().min(1).max(8).optional().describe('返回片段数上限，默认 5')
+});
+
 /** 服务端校验历史消息使用（无需 execute，与 Agent 内工具共享同一 schema） */
 export const agentValidationTools = {
   createAsset: tool({
@@ -130,6 +148,10 @@ export const agentValidationTools = {
   readAsset: tool({
     description: READ_ASSET_DESCRIPTION,
     inputSchema: readAssetInputSchema
+  }),
+  knowledgeSearch: tool({
+    description: KNOWLEDGE_SEARCH_DESCRIPTION,
+    inputSchema: knowledgeSearchInputSchema
   })
 };
 
@@ -269,6 +291,28 @@ function readAssetTool(params: { userId: string }) {
 }
 
 /**
+ * 知识库语义检索工具：embed(query) → pgvector cosine topK（均在 knowledge 服务层完成）。
+ * 只回传命中片段与来源标题（不回传向量）；低相关片段已按阈值过滤，
+ * 空结果时额外给出"如实告知"提示，降低模型臆造概率。
+ */
+function knowledgeSearchTool(params: { userId: string }) {
+  return tool({
+    description: KNOWLEDGE_SEARCH_DESCRIPTION,
+    inputSchema: knowledgeSearchInputSchema,
+    execute: async ({ query, topK }) => {
+      const results = await searchKnowledgeByText(params.userId, query, topK);
+      return {
+        results,
+        hint:
+          results.length === 0
+            ? '知识库中未找到相关资料：请如实告知用户，不要编造内容。'
+            : '请只依据以上片段作答或创作，并用 documentTitle 说明引用了哪些文档。'
+      };
+    }
+  });
+}
+
+/**
  * 每请求构建一个 Agent（serverless 无状态，上下文经闭包注入工具）。
  */
 export function buildAgent(params: { userId: string; conversationId: string; modelKey: string }) {
@@ -281,7 +325,8 @@ export function buildAgent(params: { userId: string; conversationId: string; mod
       createImageAsset: createImageAssetTool(params),
       editImageAsset: editImageAssetTool(params),
       findAssets: findAssetsTool(params),
-      readAsset: readAssetTool(params)
+      readAsset: readAssetTool(params),
+      knowledgeSearch: knowledgeSearchTool(params)
     },
     stopWhen: isStepCount(6),
     timeout: { totalMs: 240_000 },

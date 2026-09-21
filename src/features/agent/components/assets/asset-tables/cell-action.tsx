@@ -19,7 +19,7 @@ import { Icons } from '@/components/icons';
 import { deleteAssetMutation } from '../../../api/mutations';
 import { downloadAsset } from '../../../lib/asset-download';
 import { ImageEditDialog } from '../image-edit-dialog';
-import type { Asset } from '../../../api/types';
+import type { Asset, AssetKind } from '../../../api/types';
 
 /**
  * 预览弹窗含完整 Markdown 渲染链（streamdown 约 99KB 未压缩），按需加载：
@@ -29,6 +29,16 @@ const AssetPreviewDialog = dynamic(
   () => import('../asset-preview-dialog').then((m) => m.AssetPreviewDialog),
   { ssr: false }
 );
+
+/** 知识库入库弹窗同样按需加载（内含资产检索与表单链路） */
+const AddDocumentDialog = dynamic(
+  () =>
+    import('@/features/knowledge/components/add-document-dialog').then((m) => m.AddDocumentDialog),
+  { ssr: false }
+);
+
+/** 可入库的文本资产类型（image/design 无正文语义） */
+const IMPORTABLE_KINDS: AssetKind[] = ['markdown', 'html'];
 
 interface CellActionProps {
   data: Asset;
@@ -42,13 +52,22 @@ export function CellAction({ data }: CellActionProps) {
   const [previewAssetId, setPreviewAssetId] = useState(data.id);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [knowledgeMounted, setKnowledgeMounted] = useState(false);
   const deleteMutation = useMutation(deleteAssetMutation);
+
+  const importable = IMPORTABLE_KINDS.includes(data.kind);
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
   const openPreview = (assetId: string = data.id) => {
     setPreviewAssetId(assetId);
     setPreviewMounted(true);
     setPreviewOpen(true);
+  };
+
+  const openKnowledgeDialog = () => {
+    setKnowledgeMounted(true);
+    setKnowledgeOpen(true);
   };
 
   return (
@@ -66,6 +85,13 @@ export function CellAction({ data }: CellActionProps) {
           open={editOpen}
           onOpenChange={setEditOpen}
           onSuccess={(newAssetId) => openPreview(newAssetId)}
+        />
+      )}
+      {knowledgeMounted && (
+        <AddDocumentDialog
+          open={knowledgeOpen}
+          onOpenChange={setKnowledgeOpen}
+          initialAsset={{ id: data.id, title: data.title }}
         />
       )}
       <AlertModal
@@ -112,6 +138,11 @@ export function CellAction({ data }: CellActionProps) {
             <DropdownMenuItem onClick={() => openPreview()}>
               <Icons.eye className='mr-2 h-4 w-4' /> 预览
             </DropdownMenuItem>
+            {importable && (
+              <DropdownMenuItem onClick={openKnowledgeDialog}>
+                <Icons.book className='mr-2 h-4 w-4' /> 加入知识库
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => void downloadAsset(data.id)}>
               <Icons.download className='mr-2 h-4 w-4' /> 下载
             </DropdownMenuItem>

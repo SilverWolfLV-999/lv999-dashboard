@@ -10,6 +10,7 @@ import { getAssetKindMeta } from '../../constants/kinds';
 import { parseAssetReferenceBlock, type ParsedAssetReference } from '../../lib/asset-reference';
 import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
 import { ToolImagePart, type ImageAssetToolPart } from './tool-image-part';
+import { ToolKnowledgePart, type KnowledgeSearchToolPart } from './tool-knowledge-part';
 
 /**
  * 消息项：memo 化（props 仅 message / isActive）。
@@ -88,6 +89,15 @@ export const MessageItem = memo(function MessageItem({
                 part={part as unknown as ImageAssetToolPart}
                 active={isActive}
                 mode={part.type === 'tool-editImageAsset' ? 'edit' : 'create'}
+              />
+            );
+          }
+          if (isToolUIPart(part) && part.type === 'tool-knowledgeSearch') {
+            return (
+              <ToolKnowledgePart
+                key={index}
+                part={part as unknown as KnowledgeSearchToolPart}
+                active={isActive}
               />
             );
           }

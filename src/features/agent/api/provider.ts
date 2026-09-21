@@ -1,6 +1,7 @@
 import { createAlibaba } from '@ai-sdk/alibaba';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
+import { EMBEDDING_MODEL } from '../constants/embedding';
 import { DEFAULT_MODEL, isModelKey, MODEL_REGISTRY, type ModelKey } from '../constants/models';
 
 /**
@@ -50,4 +51,13 @@ export function resolveModel(key: ModelKey | string): LanguageModel {
   const provider =
     entry.transport === 'compatible' ? getCompatibleProvider() : getAlibabaProvider();
   return provider.chatModel(entry.providerModelId);
+}
+
+/**
+ * 知识库向量化模型：走百炼 OpenAI 兼容模式（同一 API Key 与 baseURL）。
+ * 注意包 API 为 `embeddingModel()`（`textEmbeddingModel()` 已废弃）；
+ * 维度由调用方经 providerOptions.openaiCompatible.dimensions 传入 EMBEDDING_DIM。
+ */
+export function resolveEmbeddingModel(): EmbeddingModel {
+  return getCompatibleProvider().embeddingModel(EMBEDDING_MODEL);
 }

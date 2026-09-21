@@ -7,6 +7,7 @@ import {
   IconArrowRight,
   IconBell,
   IconBold,
+  IconBook,
   IconBox,
   IconBrandGithub,
   IconBrandTwitter,
@@ -162,6 +163,7 @@ export const Icons = {
   // Files
   page: IconFile,
   post: IconFileText,
+  book: IconBook,
   fileTypePdf: IconFileTypePdf,
   fileTypeDoc: IconFileTypeDoc,
   fileTypeXls: IconFileTypeXls,

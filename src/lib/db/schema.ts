@@ -9,6 +9,7 @@ import {
   timestamp,
   uuid
 } from 'drizzle-orm/pg-core';
+import { vector1024 } from './vector';
 
 /**
  * Agent 创作模块数据表
@@ -19,6 +20,11 @@ import {
  *   文本内容存 content 列，二进制走 OSS 只存 storage_key；
  *   会话删除时 conversationId 置空（SET NULL）、资产保留；
  *   图片编辑（I2I）产出的新资产通过 sourceAssetId 指向源资产（源删除时置空）
+ *
+ * RAG 知识库（语义检索增强）
+ * - knowledge_documents: 知识库文档（手动粘贴 source='manual' / 从文本资产导入 source='asset'）；
+ *   原始全文存 content 列（供重嵌与展示），摄取状态 status: processing → ready / failed
+ * - knowledge_chunks: 文档切分片段 + 向量（pgvector）；文档删除时级联删除（CASCADE）
  */
 
 export const conversations = pgTable('conversations', {
@@ -79,3 +85,45 @@ export const assets = pgTable(
     index('assets_conversation_idx').on(table.conversationId)
   ]
 );
+
+export const knowledgeDocuments = pgTable(
+  'knowledge_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    title: text('title').notNull(),
+    /** 文档来源：'manual'（手动粘贴文本）/ 'asset'（从文本资产导入） */
+    source: text('source').notNull(),
+    /** 导入来源资产（source='asset' 时非空）；资产删除后置空（SET NULL），文档保留 */
+    sourceAssetId: uuid('source_asset_id').references(() => assets.id, { onDelete: 'set null' }),
+    /** 原始全文：供重嵌与展示，不随切分丢失 */
+    content: text('content').notNull(),
+    /** 摄取状态：'processing' / 'ready' / 'failed' */
+    status: text('status').notNull().default('processing'),
+    chunkCount: integer('chunk_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index('knowledge_documents_user_created_idx').on(table.userId, table.createdAt)]
+);
+
+export const knowledgeChunks = pgTable(
+  'knowledge_chunks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => knowledgeDocuments.id, { onDelete: 'cascade' }),
+    /** 冗余归属列：检索按用户过滤时无需 join 文档表 */
+    userId: text('user_id').notNull(),
+    /** 文档内序号（从 0 开始） */
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text('content').notNull(),
+    embedding: vector1024('embedding').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index('knowledge_chunks_user_idx').on(table.userId)]
+);
+// HNSW 向量索引（drizzle-kit 不生成）由迁移 SQL 手动追加：
+// CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
+//   ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);

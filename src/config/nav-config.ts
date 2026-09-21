@@ -77,6 +77,14 @@ export const navGroups: NavGroup[] = [
         items: []
       },
       {
+        title: '知识库',
+        url: '/dashboard/knowledge',
+        icon: 'book',
+        shortcut: ['k', 'b'],
+        isActive: false,
+        items: []
+      },
+      {
         title: '设计画布',
         url: '/dashboard/design',
         icon: 'palette',

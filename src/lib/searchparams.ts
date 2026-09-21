@@ -12,6 +12,10 @@ export const searchParams = {
   title: parseAsString,
   kind: parseAsString,
   favorite: parseAsBoolean,
+  /** 知识库文档状态筛选（逗号分隔：processing/ready/failed） */
+  status: parseAsString,
+  /** 知识库文档来源筛选（逗号分隔：manual/asset） */
+  source: parseAsString,
   sort: parseAsString
   // advanced filter
   // filters: getFiltersStateParser().withDefault([]),
