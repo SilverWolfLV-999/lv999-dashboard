@@ -111,7 +111,12 @@ export async function POST(request: Request) {
     return apiError(404, 'not_found', 'Conversation not found');
   }
 
-  const agent = buildAgent({ userId, conversationId, modelKey: conversation.model });
+  const agent = buildAgent({
+    userId,
+    conversationId,
+    modelKey: conversation.model,
+    skillId: conversation.activeSkillId
+  });
   type AgentUIMessage = InferAgentUIMessage<typeof agent>;
 
   // 开新流前先登记活跃流（官方要求开始新流时立即更新，防止窗口期刷新重连到旧流或拿 204）；

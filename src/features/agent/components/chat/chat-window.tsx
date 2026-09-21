@@ -40,6 +40,8 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   const conversationIdRef = useRef(conversation?.id);
   const [input, setInput] = useState('');
   const [model, setModel] = useState(conversation?.model ?? DEFAULT_MODEL);
+  // 会话级技能（专家模式）：与模型选择同构，切换即持久化到会话
+  const [skillId, setSkillId] = useState<string | null>(conversation?.activeSkillId ?? null);
   // 已选定的引用资产：提交时以机器可读块注入文本，让模型确定性地拿到 assetId
   const [referencedAssets, setReferencedAssets] = useState<ReferencedAsset[]>([]);
   const queryClient = useQueryClient();
@@ -99,7 +101,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
 
     if (!conversationIdRef.current) {
       try {
-        const created = await createConversation.mutateAsync({ model });
+        const created = await createConversation.mutateAsync({ model, activeSkillId: skillId });
         // 必须真实导航（router.replace）进入会话页；不能用 window.history.replaceState——
         // 那会让 URL 与渲染树脱节，之后回到 /dashboard/agent 时组件被复用、状态不重置。
         // 首条消息经一次性交接由目标页消费发送（导航会重挂载本组件）。
@@ -146,6 +148,16 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
     const conversationId = conversationIdRef.current;
     if (conversationId) {
       updateConversation.mutate({ id: conversationId, values: { model: next } });
+    }
+  };
+
+  // 完全仿 handleModelChange：本地立即生效 + 有会话则持久化（null = 清除回通用）；
+  // 新建会话时只更新本地态，随首条消息创建会话时一并带上
+  const handleSkillChange = (next: string | null) => {
+    setSkillId(next);
+    const conversationId = conversationIdRef.current;
+    if (conversationId) {
+      updateConversation.mutate({ id: conversationId, values: { activeSkillId: next } });
     }
   };
 
@@ -206,6 +218,8 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
         isGenerating={isGenerating}
         model={model}
         onModelChange={handleModelChange}
+        skillId={skillId}
+        onSkillChange={handleSkillChange}
         referencedAssets={referencedAssets}
         onAddReference={handleAddReference}
         onRemoveReference={handleRemoveReference}

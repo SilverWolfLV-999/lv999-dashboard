@@ -7,6 +7,7 @@ import {
   updateConversation
 } from '@/features/agent/api/service';
 import { isModelKey } from '@/features/agent/constants/models';
+import { isSkillId } from '@/features/agent/constants/skills';
 
 export const runtime = 'nodejs';
 
@@ -38,14 +39,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     return apiError(404, 'not_found', 'Conversation not found');
   }
 
-  let body: { title?: unknown; model?: unknown };
+  let body: { title?: unknown; model?: unknown; activeSkillId?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return apiError(400, 'invalid_json', 'Invalid JSON body');
   }
 
-  const patch: { title?: string; model?: string } = {};
+  const patch: { title?: string; model?: string; activeSkillId?: string | null } = {};
   if (typeof body.title === 'string') {
     const title = body.title.trim();
     if (title.length < 1 || title.length > 100) {
@@ -58,6 +59,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       return apiError(400, 'invalid_request', 'Unknown model key');
     }
     patch.model = body.model;
+  }
+  // 技能切换：null = 清除回「通用」；字符串必须是注册表内的已知 id
+  if (body.activeSkillId !== undefined) {
+    if (body.activeSkillId === null) {
+      patch.activeSkillId = null;
+    } else if (isSkillId(body.activeSkillId)) {
+      patch.activeSkillId = body.activeSkillId;
+    } else {
+      return apiError(400, 'invalid_request', 'Unknown skill id');
+    }
   }
   if (Object.keys(patch).length === 0) {
     return apiError(400, 'invalid_request', 'Nothing to update');

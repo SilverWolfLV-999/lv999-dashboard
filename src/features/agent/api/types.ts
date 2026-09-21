@@ -6,6 +6,8 @@ export interface Conversation {
   id: string;
   title: string;
   model: string;
+  /** 会话级技能（专家模式）id：指向 SKILL_REGISTRY；null = 通用（无技能） */
+  activeSkillId: string | null;
   /** 正在进行的可恢复流 id（用于刷新后重连与停止）；无活跃流时为 null */
   activeStreamId: string | null;
   createdAt: string;
@@ -101,11 +103,15 @@ export interface AssetSearchHit {
 
 export interface CreateConversationPayload {
   model: string;
+  /** 创建时即激活的技能（可空；新建会话「带技能开始」） */
+  activeSkillId?: string | null;
 }
 
 export interface UpdateConversationPayload {
   title?: string;
   model?: string;
+  /** 切换技能；null = 清除回「通用」 */
+  activeSkillId?: string | null;
 }
 
 // ---------------------------------------------------------------------------

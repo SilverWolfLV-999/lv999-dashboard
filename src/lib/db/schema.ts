@@ -14,7 +14,7 @@ import { vector1024 } from './vector';
 /**
  * Agent 创作模块数据表
  *
- * - conversations: 会话（含模型选择）
+ * - conversations: 会话（含模型选择与会话级技能）
  * - messages: 会话消息（parts 与 AI SDK 的 UIMessage.parts 结构对齐，原样存储）
  * - assets: 用户资产（Agent 生成 source='agent' / 用户上传 source='upload'）；
  *   文本内容存 content 列，二进制走 OSS 只存 storage_key；
@@ -32,6 +32,8 @@ export const conversations = pgTable('conversations', {
   userId: text('user_id').notNull(),
   title: text('title').notNull(),
   model: text('model').notNull().default('deepseek-flash'),
+  /** 会话级技能（专家模式）id：指向代码内技能注册表；null = 通用（无技能） */
+  activeSkillId: text('active_skill_id'),
   /** 正在进行的可恢复流 id（resumable-stream）；无活跃流时为 null */
   activeStreamId: text('active_stream_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

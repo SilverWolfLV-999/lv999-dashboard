@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/icons';
 import { getAssetKindMeta } from '../../constants/kinds';
+import { getSkill } from '../../constants/skills';
 import type { ReferencedAsset } from '../../lib/asset-reference';
 import { ModelSelector } from './model-selector';
+import { SkillSelector } from './skill-selector';
 
 /** 按需加载：不打开选择器就不下载弹窗 chunk（bundle-dynamic-imports） */
 const AssetReferencePicker = dynamic(
@@ -23,13 +25,16 @@ interface ChatComposerProps {
   isGenerating: boolean;
   model: string;
   onModelChange: (value: string) => void;
+  /** 会话级技能 id（null = 通用） */
+  skillId: string | null;
+  onSkillChange: (value: string | null) => void;
   /** 已引用的资产（展示为可移除 chip，提交时由 chat-window 注入机器可读块） */
   referencedAssets: ReferencedAsset[];
   onAddReference: (asset: ReferencedAsset) => void;
   onRemoveReference: (id: string) => void;
 }
 
-/** 输入区：模型选择 + 引用资产 + 文本输入 + 发送/停止 */
+/** 输入区：模型选择 + 技能选择 + 引用资产 + 文本输入 + 发送/停止 */
 export function ChatComposer({
   value,
   onChange,
@@ -38,6 +43,8 @@ export function ChatComposer({
   isGenerating,
   model,
   onModelChange,
+  skillId,
+  onSkillChange,
   referencedAssets,
   onAddReference,
   onRemoveReference
@@ -60,13 +67,17 @@ export function ChatComposer({
     setPickerOpen(true);
   };
 
-  // 已选引用但还没输入时，用 placeholder 引导下一步（否则发送禁用会让人以为按钮坏了）
+  // 已选引用但还没输入时，用 placeholder 引导下一步（否则发送禁用会让人以为按钮坏了）；
+  // 无引用但技能激活时，用技能引导语（引用优先：它更贴近即将发送的这条消息）
+  const skill = getSkill(skillId);
   const placeholder =
     referencedAssets.length > 0
       ? `想基于《${referencedAssets[0].title.replace(/\s+/g, ' ').trim()}》${
           referencedAssets.length > 1 ? `等 ${referencedAssets.length} 个资产` : ''
         }做什么？`
-      : '描述你的创作需求…（Enter 发送，Shift+Enter 换行）';
+      : skill
+        ? (skill.placeholder ?? `描述你的需求，「${skill.name}」将按专家套路与你协作…`)
+        : '描述你的创作需求…（Enter 发送，Shift+Enter 换行）';
 
   return (
     <div className='shrink-0 border-t'>
@@ -107,6 +118,7 @@ export function ChatComposer({
         <div className='flex items-center justify-between gap-2'>
           <div className='flex min-w-0 items-center gap-2'>
             <ModelSelector value={model} onChange={onModelChange} disabled={isGenerating} />
+            <SkillSelector value={skillId} onChange={onSkillChange} disabled={isGenerating} />
             <Button
               variant='outline'
               size='sm'

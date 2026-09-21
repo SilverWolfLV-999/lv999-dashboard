@@ -1,6 +1,7 @@
 import { ToolLoopAgent, isStepCount, tool, type InferUITools, type UIMessage } from 'ai';
 import { z } from 'zod';
 import { DEFAULT_MODEL, isModelKey } from '../constants/models';
+import { getSkill } from '../constants/skills';
 import { ASPECT_KEYS, ASPECT_PRESETS } from '../constants/image-models';
 import { resolveModel } from './provider';
 import { generateImage } from './image-generation';
@@ -314,12 +315,23 @@ function knowledgeSearchTool(params: { userId: string }) {
 
 /**
  * 每请求构建一个 Agent（serverless 无状态，上下文经闭包注入工具）。
+ * skillId：会话级技能（专家模式）；命中注册表时把技能指令追加到基础指令后。
+ * 防御：未知/已下架 id（getSkill → undefined）回退基础指令，不报错。
  */
-export function buildAgent(params: { userId: string; conversationId: string; modelKey: string }) {
+export function buildAgent(params: {
+  userId: string;
+  conversationId: string;
+  modelKey: string;
+  skillId?: string | null;
+}) {
   const modelKey = isModelKey(params.modelKey) ? params.modelKey : DEFAULT_MODEL;
+  const skill = getSkill(params.skillId);
+  const instructions = skill
+    ? `${AGENT_INSTRUCTIONS}\n\n# 当前技能：${skill.name}\n${skill.instructions}`
+    : AGENT_INSTRUCTIONS;
   return new ToolLoopAgent({
     model: resolveModel(modelKey),
-    instructions: AGENT_INSTRUCTIONS,
+    instructions,
     tools: {
       createAsset: createAssetTool(params),
       createImageAsset: createImageAssetTool(params),
