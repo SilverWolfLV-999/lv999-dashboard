@@ -1,6 +1,6 @@
 'use client';
 
-import { Icons } from '@/components/icons';
+import { Icons, type Icon } from '@/components/icons';
 import Image from 'next/image';
 import * as React from 'react';
 import Dropzone, { type DropzoneProps, type FileRejection } from 'react-dropzone';
@@ -112,19 +112,21 @@ export function FileUploader(props: FileUploaderProps) {
   const onDrop = React.useCallback(
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       if (!multiple && maxFiles === 1 && acceptedFiles.length > 1) {
-        toast.error('Cannot upload more than 1 file at a time');
+        toast.error('一次只能上传 1 个文件');
         return;
       }
 
       if ((files?.length ?? 0) + acceptedFiles.length > maxFiles) {
-        toast.error(`Cannot upload more than ${maxFiles} files`);
+        toast.error(`最多上传 ${maxFiles} 个文件`);
         return;
       }
 
+      // 仅图片创建 object-URL 预览；PDF/office 等非图片的 blob 无法被 <Image> 渲染（会破图），
+      // 这类文件在 FileCard 中改用文件类型图标展示
       const newFiles = acceptedFiles.map((file) =>
-        Object.assign(file, {
-          preview: URL.createObjectURL(file)
-        })
+        file.type.startsWith('image/')
+          ? Object.assign(file, { preview: URL.createObjectURL(file) })
+          : file
       );
 
       const updatedFiles = files ? [...files, ...newFiles] : newFiles;
@@ -133,20 +135,18 @@ export function FileUploader(props: FileUploaderProps) {
 
       if (rejectedFiles.length > 0) {
         rejectedFiles.forEach(({ file }) => {
-          toast.error(`File ${file.name} was rejected`);
+          toast.error(`文件 ${file.name} 不符合要求（类型或大小）`);
         });
       }
 
       if (onUpload && updatedFiles.length > 0 && updatedFiles.length <= maxFiles) {
-        const target = updatedFiles.length > 0 ? `${updatedFiles.length} files` : `file`;
-
         toast.promise(onUpload(updatedFiles), {
-          loading: `Uploading ${target}...`,
+          loading: '正在上传…',
           success: () => {
             setFiles([]);
-            return `${target} uploaded`;
+            return '上传完成';
           },
-          error: `Failed to upload ${target}`
+          error: '上传失败'
         });
       }
     },
@@ -198,13 +198,13 @@ export function FileUploader(props: FileUploaderProps) {
             )}
             {...dropzoneProps}
           >
-            <input {...getInputProps()} aria-label='Upload files' />
+            <input {...getInputProps()} aria-label='上传文件' />
             {isDragActive ? (
               <div className='flex flex-col items-center justify-center gap-4 sm:px-5'>
                 <div className='rounded-full border border-dashed p-3'>
                   <Icons.upload className='text-muted-foreground size-7' aria-hidden='true' />
                 </div>
-                <p className='text-muted-foreground font-medium'>Drop the files here</p>
+                <p className='text-muted-foreground font-medium'>拖拽文件到此处</p>
               </div>
             ) : (
               <div className='flex flex-col items-center justify-center gap-4 sm:px-5'>
@@ -213,14 +213,12 @@ export function FileUploader(props: FileUploaderProps) {
                 </div>
                 <div className='space-y-px'>
                   <p className='text-muted-foreground font-medium'>
-                    Drag {`'n'`} drop files here, or click to select files
+                    拖拽文件到此处，或点击选择文件
                   </p>
                   <p className='text-muted-foreground/70 text-sm'>
-                    You can upload
                     {maxFiles > 1
-                      ? ` ${maxFiles === Infinity ? 'multiple' : maxFiles}
-                      files (up to ${formatBytes(maxSize)} each)`
-                      : ` a file with ${formatBytes(maxSize)}`}
+                      ? `可上传 ${maxFiles === Infinity ? '多个' : maxFiles} 个文件（每个不超过 ${formatBytes(maxSize)}）`
+                      : `可上传 1 个文件（不超过 ${formatBytes(maxSize)}）`}
                   </p>
                 </div>
               </div>
@@ -253,6 +251,7 @@ interface FileCardProps {
 }
 
 function FileCard({ file, progress, onRemove }: FileCardProps) {
+  const FileIcon = fileIconFor(file.name);
   return (
     <div className='relative flex items-center space-x-4'>
       <div className='flex flex-1 space-x-4'>
@@ -265,7 +264,11 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
             loading='lazy'
             className='aspect-square shrink-0 rounded-md object-cover'
           />
-        ) : null}
+        ) : (
+          <span className='bg-muted flex size-12 shrink-0 items-center justify-center rounded-md'>
+            <FileIcon className='text-muted-foreground size-5' />
+          </span>
+        )}
         <div className='flex w-full flex-col gap-2'>
           <div className='space-y-px'>
             <p className='text-foreground/80 line-clamp-1 text-sm font-medium'>{file.name}</p>
@@ -284,7 +287,7 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
           className='size-8 rounded-full'
         >
           <Icons.close className='text-muted-foreground' />
-          <span className='sr-only'>Remove file</span>
+          <span className='sr-only'>移除文件</span>
         </Button>
       </div>
     </div>
@@ -293,4 +296,14 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
 
 function isFileWithPreview(file: File): file is File & { preview: string } {
   return 'preview' in file && typeof file.preview === 'string';
+}
+
+/** 非图片文件按扩展名选图标（复用 icons 注册表）；文本类等其余用文档图标兜底 */
+function fileIconFor(filename: string): Icon {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'pdf') return Icons.fileTypePdf;
+  if (ext === 'doc' || ext === 'docx' || ext === 'docm') return Icons.fileTypeDoc;
+  if (ext === 'xls' || ext === 'xlsx' || ext === 'xlsm' || ext === 'csv') return Icons.fileTypeXls;
+  if (ext === 'zip') return Icons.fileZip;
+  return Icons.post;
 }

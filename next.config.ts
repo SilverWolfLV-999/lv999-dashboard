@@ -18,8 +18,9 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ['geist'],
   // server-only 包不参与打包：ali-oss 的依赖 urllib 含惰性可选 require（proxy-agent），
-  // 仅在启用代理时才会执行，Turbopack 静态解析会误报缺失；运行时由 Node 直接 require
-  serverExternalPackages: ['ali-oss'],
+  // 仅在启用代理时才会执行，Turbopack 静态解析会误报缺失；运行时由 Node 直接 require。
+  // @firecrawl/anydoc 是 napi-rs 原生模块（.node 二进制），同样必须由 Node 运行时直接加载
+  serverExternalPackages: ['ali-oss', '@firecrawl/anydoc'],
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production'
   }

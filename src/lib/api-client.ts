@@ -28,9 +28,15 @@ async function parseErrorBody(res: Response): Promise<{ code?: string; message?:
 }
 
 export async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  // FormData 不能手动设 Content-Type：交给浏览器自动带 multipart boundary，
+  // 否则服务端 formData() 解析失败；其余请求保持默认 JSON 头并与调用方 headers 合并
+  const isFormData = options?.body instanceof FormData;
   const res = await fetch(`${BASE_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
+    ...options,
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...options?.headers
+    }
   });
 
   if (!res.ok) {

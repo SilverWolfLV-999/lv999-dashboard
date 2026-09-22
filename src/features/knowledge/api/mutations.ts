@@ -19,6 +19,21 @@ export const createKnowledgeDocumentMutation = mutationOptions({
   onSuccess: invalidateDocuments
 });
 
+/** 上传文件新增文档：multipart 提交，解析/摄取均在服务端完成（应答与 JSON 创建同构） */
+export const uploadKnowledgeDocumentMutation = mutationOptions({
+  mutationFn: (data: { file: File; title?: string }) => {
+    const form = new FormData();
+    form.append('file', data.file);
+    if (data.title?.trim()) form.append('title', data.title.trim());
+    // FormData 不设 Content-Type：apiClient 已适配（浏览器自动带 multipart boundary）
+    return apiClient<DocumentIngestResult>('/agent/knowledge/documents/upload', {
+      method: 'POST',
+      body: form
+    });
+  },
+  onSuccess: invalidateDocuments
+});
+
 export const deleteKnowledgeDocumentMutation = mutationOptions({
   mutationFn: (id: string) =>
     apiClient<{ success: boolean }>(`/agent/knowledge/documents/${id}`, { method: 'DELETE' }),

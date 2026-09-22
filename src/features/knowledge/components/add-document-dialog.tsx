@@ -18,6 +18,7 @@ import { Field, FieldError, FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Icons } from '@/components/icons';
+import { FileUploader } from '@/components/file-uploader';
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback';
 import { ApiError } from '@/lib/api-client';
 import { useAppForm } from '@/lib/form';
@@ -25,9 +26,10 @@ import { cn } from '@/lib/utils';
 import { assetsQueryOptions } from '@/features/agent/api/queries';
 import { getAssetKindMeta } from '@/features/agent/constants/kinds';
 import { formatDateTime } from '@/features/agent/lib/format';
-import { createKnowledgeDocumentMutation } from '../api/mutations';
+import { createKnowledgeDocumentMutation, uploadKnowledgeDocumentMutation } from '../api/mutations';
 import type { CreateDocumentRequest } from '../api/types';
-import { IMPORTABLE_ASSET_KINDS } from '../constants/knowledge';
+import { KNOWLEDGE_FILE_ACCEPT } from '../constants/files';
+import { IMPORTABLE_ASSET_KINDS, MAX_UPLOAD_FILE_BYTES } from '../constants/knowledge';
 
 /** 单次拉取上限：只需最近一批文本资产，超出用搜索缩小范围 */
 const ASSET_PAGE_LIMIT = 40;
@@ -35,18 +37,20 @@ const ASSET_PAGE_LIMIT = 40;
 /** 正文字数上限（服务端另有 100KB 字节上限，中文按 ~3 字/KB 留出余量） */
 const CONTENT_MAX_LENGTH = 30000;
 
-type TabValue = 'manual' | 'asset';
+type TabValue = 'manual' | 'asset' | 'file';
 
 /**
- * 校验按 tab 分支：粘贴文本必须有正文；从资产导入必须选中一篇资产。
+ * 校验按 tab 分支：粘贴文本必须有正文；从资产导入必须选中一篇资产；上传文件必须选中一个文件。
  * refine 的 path 会被 TanStack Form 映射为对应字段的错误（standard-schema 约定）。
  */
 const addDocumentSchema = z
   .object({
-    mode: z.enum(['manual', 'asset']),
+    mode: z.enum(['manual', 'asset', 'file']),
     title: z.string().max(200, '标题不超过 200 字'),
     content: z.string(),
-    sourceAssetId: z.string()
+    sourceAssetId: z.string(),
+    /** 镜像「上传文件」tab 的选文件状态（文件本体在局部 state，二进制不进表单） */
+    hasFile: z.boolean()
   })
   .refine((value) => value.mode !== 'manual' || value.content.trim().length > 0, {
     message: '请粘贴要存入知识库的文本',
@@ -55,16 +59,26 @@ const addDocumentSchema = z
   .refine((value) => value.mode !== 'asset' || value.sourceAssetId.length > 0, {
     message: '请选择一篇文本资产',
     path: ['sourceAssetId']
+  })
+  .refine((value) => value.mode !== 'file' || value.hasFile, {
+    message: '请选择要上传的文件',
+    path: ['hasFile']
   });
 
 type AddDocumentValues = z.infer<typeof addDocumentSchema>;
 
-function resolveErrorMessage(error: unknown): string {
+function resolveErrorMessage(error: unknown, mode: TabValue): string {
   if (error instanceof ApiError) {
     if (error.status === 429) return '操作过于频繁，请稍后再试';
-    if (error.status === 413) return '文本过大，请精简后再试';
+    if (error.status === 413) {
+      return mode === 'file' ? '文件超过 10MB 上限，或提取文本过大' : '文本过大，请精简后再试';
+    }
     if (error.status === 404) return '所选资产不存在或已删除';
-    if (error.status === 400) return '内容无法入库，请检查文本后重试';
+    if (error.status === 400) {
+      // 文件上传的解析失败（加密/扫描件/空文本/不支持类型）由服务端给出中文消息，直接透传
+      if (mode === 'file' && error.message) return error.message;
+      return '内容无法入库，请检查文本后重试';
+    }
   }
   return '加入知识库失败，请稍后重试';
 }
@@ -83,25 +97,51 @@ interface SelectedAsset {
 }
 
 /**
- * 新增知识库文档对话框：两个 tab —— 手动粘贴文本 / 从文本资产导入（markdown、html）。
- * 提交后服务端同步完成「切分 → embedding → 落库」，成功即提示片段数；
+ * 新增知识库文档对话框：三个 tab —— 手动粘贴文本 / 从文本资产导入（markdown、html）/ 上传文件。
+ * 提交后服务端同步完成「（解析）→ 切分 → embedding → 落库」，成功即提示片段数；
  * 摄取失败（status=failed）不阻塞关闭，用户可在列表中「重新摄取」。
  */
 export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocumentDialogProps) {
   const [tab, setTab] = useState<TabValue>('manual');
   const [selectedAsset, setSelectedAsset] = useState<SelectedAsset | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const mutation = useMutation(createKnowledgeDocumentMutation);
+  const uploadMutation = useMutation(uploadKnowledgeDocumentMutation);
 
   const form = useAppForm({
     defaultValues: {
       mode: 'manual',
       title: '',
       content: '',
-      sourceAssetId: ''
+      sourceAssetId: '',
+      hasFile: false
     } as AddDocumentValues,
     validators: { onSubmit: addDocumentSchema },
     onSubmit: async ({ value }) => {
       const title = value.title.trim();
+
+      // 文件上传走 multipart mutation（二进制不进 JSON 表单）；提交成功后清空选文件
+      if (value.mode === 'file') {
+        const file = files[0];
+        if (!file) {
+          toast.error('请选择要上传的文件');
+          return;
+        }
+        try {
+          const result = await uploadMutation.mutateAsync({ file, title });
+          if (result.status === 'ready') {
+            toast.success(`已加入知识库，切分为 ${result.chunkCount} 个片段`);
+          } else {
+            toast.error('向量化失败，可在列表中「重新摄取」');
+          }
+          setFiles([]);
+          onOpenChange(false);
+        } catch (error) {
+          toast.error(resolveErrorMessage(error, 'file'));
+        }
+        return;
+      }
+
       const payload: CreateDocumentRequest =
         value.mode === 'manual'
           ? { source: 'manual', ...(title && { title }), content: value.content }
@@ -117,7 +157,7 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
           onOpenChange(false);
         }
       } catch (error) {
-        toast.error(resolveErrorMessage(error));
+        toast.error(resolveErrorMessage(error, value.mode));
       }
     }
   });
@@ -129,6 +169,7 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
   useEffect(() => {
     if (!open) return;
     form.reset();
+    setFiles([]);
     const preset = initialAssetId ? { id: initialAssetId, title: initialAssetTitle ?? '' } : null;
     setSelectedAsset(preset);
     const nextTab: TabValue = preset ? 'asset' : 'manual';
@@ -138,13 +179,27 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
     // eslint-disable-next-line react-hooks/exhaustive-deps -- form 实例与 setter 为稳定引用，仅在 open / 预选资产变化时执行
   }, [open, initialAssetId, initialAssetTitle]);
 
+  // 离开「上传文件」tab 时丢弃已选文件，避免残留文件被误提交
+  useEffect(() => {
+    if (tab !== 'file') setFiles([]);
+  }, [tab]);
+
+  // FileUploader 的 onValueChange 是 Dispatch<SetStateAction>：兼容函数式更新，同步镜像 hasFile
+  const handleFilesChange: React.Dispatch<React.SetStateAction<File[]>> = (action) => {
+    const next = typeof action === 'function' ? action(files) : action;
+    setFiles(next);
+    void form.setFieldValue('hasFile', next.length > 0);
+  };
+
   const handleSelectAsset = (asset: SelectedAsset | null) => {
     setSelectedAsset(asset);
     void form.setFieldValue('sourceAssetId', asset?.id ?? '');
   };
 
   const handleTabChange = (value: unknown) => {
-    const next: TabValue = value === 'asset' ? 'asset' : 'manual';
+    const next = (['manual', 'asset', 'file'] as const).includes(value as TabValue)
+      ? (value as TabValue)
+      : 'manual';
     setTab(next);
     void form.setFieldValue('mode', next);
   };
@@ -187,6 +242,7 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
             <TabsList>
               <TabsTrigger value='manual'>粘贴文本</TabsTrigger>
               <TabsTrigger value='asset'>从资产导入</TabsTrigger>
+              <TabsTrigger value='file'>上传文件</TabsTrigger>
             </TabsList>
 
             <TabsContent value='manual'>
@@ -237,6 +293,30 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
                 )}
               />
             </TabsContent>
+
+            <TabsContent value='file'>
+              <form.AppField
+                name='hasFile'
+                children={(field) => (
+                  <Field data-invalid={field.state.meta.errors.length > 0}>
+                    <FileUploader
+                      accept={KNOWLEDGE_FILE_ACCEPT}
+                      maxFiles={1}
+                      maxSize={MAX_UPLOAD_FILE_BYTES}
+                      value={files}
+                      onValueChange={handleFilesChange}
+                    />
+                    <p className='text-muted-foreground text-xs'>
+                      支持 PDF、Word、PPT、Excel、Markdown、TXT、HTML 等格式（单个不超过
+                      10MB）；扫描件与加密文档暂不支持。标题留空则取文件名。
+                    </p>
+                    {field.state.meta.errors.length > 0 && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )}
+              />
+            </TabsContent>
           </Tabs>
         </form>
 
@@ -245,8 +325,16 @@ export function AddDocumentDialog({ open, onOpenChange, initialAsset }: AddDocum
             取消
           </Button>
           {/* 提交按钮在 footer（form 元素外），用 form 属性关联 */}
-          <Button type='submit' form='knowledge-add-form' disabled={mutation.isPending}>
-            {mutation.isPending ? <Icons.spinner className='animate-spin' /> : <Icons.add />}
+          <Button
+            type='submit'
+            form='knowledge-add-form'
+            disabled={mutation.isPending || uploadMutation.isPending}
+          >
+            {mutation.isPending || uploadMutation.isPending ? (
+              <Icons.spinner className='animate-spin' />
+            ) : (
+              <Icons.add />
+            )}
             加入知识库
           </Button>
         </DialogFooter>

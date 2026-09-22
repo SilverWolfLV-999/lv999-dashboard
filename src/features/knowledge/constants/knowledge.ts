@@ -3,14 +3,15 @@
  * 服务端（摄取、检索）与客户端（表格、对话框）共用同一来源，避免魔法数字散落。
  */
 
-/** 文档来源：手动粘贴文本 / 从文本资产导入 */
-export const KNOWLEDGE_SOURCE_VALUES = ['manual', 'asset'] as const;
+/** 文档来源：手动粘贴文本 / 从文本资产导入 / 上传文件解析 */
+export const KNOWLEDGE_SOURCE_VALUES = ['manual', 'asset', 'file'] as const;
 
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCE_VALUES)[number];
 
 export const KNOWLEDGE_SOURCE_LABELS: Record<KnowledgeSource, string> = {
   manual: '手动录入',
-  asset: '资产导入'
+  asset: '资产导入',
+  file: '文件上传'
 };
 
 /** 摄取状态：写入即 processing，向量化完成后 ready，异常置 failed（可重试） */
@@ -42,6 +43,9 @@ export const CHUNK_UNIT_MAX_CHARS = 300;
 
 /** 单文档正文字节上限（超出则直接拒绝入库，避免函数超时） */
 export const MAX_DOCUMENT_BYTES = 100 * 1024;
+
+/** 上传文件的原始字节上限（multipart 端点与前端 FileUploader 共用；提取文本仍受 MAX_DOCUMENT_BYTES 约束） */
+export const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 
 /** 导入资产的原始正文字节上限（html 去标签前的防御线） */
 export const MAX_SOURCE_BYTES = 1024 * 1024;

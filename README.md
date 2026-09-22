@@ -25,7 +25,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **专家模式（技能系统）**：会话级选定一个专家技能（电商套图设计 / 小红书图文 / 通用创作），Agent 按其人设与工作流持续协作；技能注册表代码内定义，增删只改一个文件
 - **对话内资产引用**：输入区「引用资产」按钮从「我的资产」挑选若干资产，提交时拼接 `[引用资产]` 机器可读块，让模型确定性地拿到 assetId 无需再检索
 - **设计画布**：基于 Konva 的 Canva/Figma 式画布编辑器；摆放文字 / 图形 / 图片（可引用 Agent 生成的图片资产），选中/移动/缩放/旋转、撤销重做、导出 PNG，产物沉淀为可重新编辑的 `design` 资产
-- **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
+- **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；支持**上传 PDF / Word / PPT / Excel / Markdown 等文件**（`@firecrawl/anydoc` 解析为结构化 Markdown）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
 - **我的资产**：Agent 与设计画布的产出统一沉淀为可管理资产（markdown / html / image / design / video 五类）；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除 / **收藏** / **批量删除**，图片 / 视频经 OSS 签名 URL 访问（视频列表显示 OSS 截帧封面）
 - **直连图片编辑**：图片资产行操作「继续修改」直连 I2I（不经聊天），产出派生资产并记录血缘
 - **总览仪表盘**：统计卡片 + Recharts 图表；基于并行路由（Parallel Routes），每个区块拥有独立的加载与错误状态；**已接真实数据**（资产统计 / 类型分布 / 30 天趋势 / 最近创作）
@@ -186,7 +186,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 ### RAG 知识库
 
-文本知识（手动录入 / 从 markdown、html 资产导入）经切分 → 百炼 `text-embedding-v4` 向量化 → 存入 **pgvector**（`knowledge_documents` / `knowledge_chunks` 两表 + HNSW cosine 索引）。Agent 通过 `knowledgeSearch` 工具按语义检索 topK 片段（阈值过滤低相关），仅依据命中片段作答并标注来源；与 `findAssets`（按标题找作品）区分。复用现有 DASHSCOPE 通道，零新增依赖。完整数据模型、摄取管线、检索与 API 契约见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
+文本知识（手动录入 / 从 markdown、html 资产导入 / **上传 PDF·Office·Markdown 文件经 `@firecrawl/anydoc` 解析为结构化 Markdown**）经切分 → 百炼 `text-embedding-v4` 向量化 → 存入 **pgvector**（`knowledge_documents` / `knowledge_chunks` 两表 + HNSW cosine 索引）。Agent 通过 `knowledgeSearch` 工具按语义检索 topK 片段（阈值过滤低相关），仅依据命中片段作答并标注来源；与 `findAssets`（按标题找作品）区分。检索/向量化链路零新增依赖（文件解析另引入 anydoc napi 原生模块）。完整数据模型、摄取管线、文件解析、检索与 API 契约见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
 
 ### 视频产物（Phase 3）
 
@@ -223,7 +223,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 - [x] 对话内资产引用：`[引用资产]` 机器可读块，让模型确定性地拿到 assetId
 - [x] 资产增强：收藏 / 批量删除 / 直连图片编辑（I2I 不经聊天）
 - [x] 设计画布编辑器：Konva 画布、文字 / 图形 / 图片摆放、导出 PNG、产物沉淀为 `design` 资产
-- [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强
+- [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强；支持上传 PDF/Office/Markdown 文件（`@firecrawl/anydoc` 解析为结构化 Markdown）
 - [x] 总览仪表盘接真实数据：资产统计 / 类型分布 / 30 天趋势 / 最近创作
 - [x] **视频产物（Phase 3）**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
 - [ ] 替换预览截图与 OG 图（当前为 AI 生成的宣传图，后期将替换为真实界面截图）

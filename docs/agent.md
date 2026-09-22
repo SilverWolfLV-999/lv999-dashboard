@@ -274,6 +274,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片规避 canvas 跨域污染；带 `?snapshot=1` 且 video 时回 OSS 截帧封面）|
 | POST | `/api/agent/assets/batch-delete` | 批量删除（单次 ≤100 uuid，限流 10/分）|
 | GET / POST | `/api/agent/knowledge/documents` | 知识库文档列表 / 新增（同步摄取，限流 scope `knowledge` 30/分）——见 knowledge-base.md |
+| POST | `/api/agent/knowledge/documents/upload` | 上传文件新增文档（multipart；anydoc 解析 PDF/Office/Markdown 为结构化文本后同步摄取）——见 knowledge-base.md §4.1 |
 | DELETE | `/api/agent/knowledge/documents/[id]` | 删除文档（片段级联删除）|
 | POST | `/api/agent/knowledge/documents/[id]/retry` | 重新摄取（失败文档重试）|
 

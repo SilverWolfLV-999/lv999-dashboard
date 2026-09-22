@@ -107,11 +107,13 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
                       图片无法加载（文件可能已被删除）。
                     </div>
                   ) : (
+                    // h-full w-full 让 img 盒子填满固定高度内容区，object-contain 居中 letterbox；
+                    // 若按宽度铺满（max-h-full）高度由比例算出会矮于内容区，导致底部留白（同 video 分支修复模式）
                     // oxlint-disable-next-line nextjs/no-img-element -- 直连 OSS 签名 URL（私有桶），不经图片优化器，避免 Vercel 带宽与签名缓存问题
                     <img
                       src={data.previewUrl}
                       alt={data.title}
-                      className='mx-auto max-h-full object-contain'
+                      className='bg-black h-full w-full object-contain'
                       onError={() => setFailedUrl(data.previewUrl ?? null)}
                     />
                   )

@@ -44,7 +44,8 @@ export const KNOWLEDGE_STATUS_META: Record<KnowledgeStatus, StatusMeta> = {
 
 export const KNOWLEDGE_SOURCE_META: Record<KnowledgeSource, SourceMeta> = {
   manual: { label: KNOWLEDGE_SOURCE_LABELS.manual, icon: Icons.text },
-  asset: { label: KNOWLEDGE_SOURCE_LABELS.asset, icon: Icons.post }
+  asset: { label: KNOWLEDGE_SOURCE_LABELS.asset, icon: Icons.post },
+  file: { label: KNOWLEDGE_SOURCE_LABELS.file, icon: Icons.upload }
 };
 
 /** 宽松读取：兼容未知历史值，避免渲染崩溃 */
