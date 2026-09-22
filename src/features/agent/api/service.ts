@@ -431,6 +431,45 @@ export async function createImageAsset(params: {
 }
 
 /**
+ * 视频资产：与 createImageAsset 同构——应用层预生成 assetId → 转存 OSS（.mp4）→ 一次性 insert 全字段。
+ * prompt 存 content 列（可溯源/可重试）；I2V 派生视频用 sourceAssetId 记录血缘（指向源图片资产）。
+ */
+export async function createVideoAsset(params: {
+  userId: string;
+  /** 归属会话（可空）：聊天内生成传入；预留直连端点无会话场景 */
+  conversationId: string | null;
+  title: string;
+  /** 生成 prompt（存 content 列，可溯源，与图片一致） */
+  prompt: string;
+  videoBuffer: Buffer;
+  mime: 'video/mp4';
+  /** 派生来源资产 id（I2V 产物指向源图片资产；T2V 为空） */
+  sourceAssetId?: string | null;
+}): Promise<{ id: string; sizeBytes: number }> {
+  const assetId = randomUUID();
+  const storageKey = assetObjectKey(params.userId, assetId, 'mp4');
+  await putObject(storageKey, params.videoBuffer, params.mime);
+
+  const sizeBytes = params.videoBuffer.byteLength;
+  const db = getDb();
+  await db.insert(assets).values({
+    id: assetId,
+    userId: params.userId,
+    conversationId: params.conversationId,
+    sourceAssetId: params.sourceAssetId ?? null,
+    source: 'agent',
+    title: params.title,
+    kind: 'video',
+    content: params.prompt,
+    storageKey,
+    mime: params.mime,
+    sizeBytes,
+    status: 'ready'
+  });
+  return { id: assetId, sizeBytes };
+}
+
+/**
  * 设计画布资产：文档 JSON 存 content 列，导出 PNG 预览存 OSS（storageKey）。
  * 参照 createImageAsset 的「预生成 id → 转存 OSS → 一次性 insert 全字段」。
  * previewPng 可空（纯图形文档首次保存可不带预览）；mime 固定 application/json（描述 content 列）。

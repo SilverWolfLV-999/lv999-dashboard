@@ -118,6 +118,23 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
                 ) : (
                   <div className='text-muted-foreground p-6 text-sm'>图片加载中…</div>
                 ))}
+              {data.kind === 'video' &&
+                (data.previewUrl ? (
+                  // oxlint-disable-next-line jsx-a11y/media-has-caption -- AI 生成视频无字幕轨；autoPlay+muted 保证可靠自动播放（可手动取消静音）
+                  <video
+                    aria-label={`视频：${data.title}`}
+                    controls
+                    autoPlay
+                    muted
+                    playsInline
+                    preload='metadata'
+                    poster={`/api/agent/assets/${assetId}/raw?snapshot=1`}
+                    src={data.previewUrl}
+                    className='bg-black h-full w-full object-contain'
+                  />
+                ) : (
+                  <div className='text-muted-foreground p-6 text-sm'>视频加载中…</div>
+                ))}
             </>
           ) : (
             <div className='text-muted-foreground p-6 text-sm'>加载中…</div>

@@ -56,3 +56,38 @@ export async function getSignedUrl(
     })
   });
 }
+
+/**
+ * 视频截帧封面签名 URL（OSS 原生视频截帧，零成本零依赖零存储）。
+ *
+ * 通过 signatureUrl 的 process 选项下发 `x-oss-process=video/snapshot`，该参数会被纳入签名
+ * （私有桶必需；不能先签名再手动拼接 &x-oss-process，否则 SignatureDoesNotMatch）。
+ * 返回的是同步签名字符串（signatureUrl 为同步 API）。
+ *
+ * 参数默认值（列表缩略图）：第 1 秒截帧、jpg、宽 400px、fast 关键帧模式。
+ */
+export function videoSnapshotUrl(
+  storageKey: string,
+  options?: {
+    /** 截帧时间（毫秒），默认 1000（第 1 秒，避开黑屏开场） */
+    time?: number;
+    /** 输出宽度（高度自动按比例），默认 400 */
+    width?: number;
+    /** 输出格式，默认 jpg */
+    format?: 'jpg' | 'png';
+    /** 截帧模式，默认 fast（关键帧，更快） */
+    mode?: 'fast' | 'accurate';
+    /** 签名有效期（秒），默认 3600 */
+    expiresInSeconds?: number;
+  }
+): string {
+  const time = options?.time ?? 1000;
+  const width = options?.width ?? 400;
+  const format = options?.format ?? 'jpg';
+  const mode = options?.mode ?? 'fast';
+  const expiresInSeconds = options?.expiresInSeconds ?? 3600;
+  return getOssClient().signatureUrl(storageKey, {
+    expires: expiresInSeconds,
+    process: `video/snapshot,t_${time},f_${format},w_${width},m_${mode}`
+  });
+}

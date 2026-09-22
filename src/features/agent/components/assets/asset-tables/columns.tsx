@@ -55,12 +55,15 @@ function AssetTitleCell({ asset }: { asset: Asset }) {
 
 /**
  * 行首缩略图：图片/设计资产经同源 /raw 代理加载 36px 预览（设计取导出 PNG），
- * 文本类资产与加载失败回退为类型图标 tile；bg-muted 兼作暗色下透明图底色。
+ * 视频资产经 /raw?snapshot=1 加载 OSS 截帧封面 + 播放图标 overlay（列表不渲染 <video>，
+ * 避免 10+ 视频并发预加载阻塞页面）；文本类资产与加载失败回退为类型图标 tile；
+ * bg-muted 兼作暗色下透明图底色。
  */
 function AssetThumb({ asset }: { asset: Asset }) {
   const [failed, setFailed] = useState(false);
   const { icon: KindIcon } = getAssetKindMeta(asset.kind);
-  const isVisual = (asset.kind === 'image' || asset.kind === 'design') && !failed;
+  const isVideo = asset.kind === 'video';
+  const isVisual = (asset.kind === 'image' || asset.kind === 'design' || isVideo) && !failed;
 
   if (!isVisual) {
     return (
@@ -69,15 +72,26 @@ function AssetThumb({ asset }: { asset: Asset }) {
       </span>
     );
   }
+  // 视频走截帧封面（?snapshot=1）；图片/设计走完整对象缩略图
+  const src = `/api/agent/assets/${asset.id}/raw${isVideo ? '?snapshot=1' : ''}`;
   return (
-    // oxlint-disable-next-line nextjs/no-img-element -- 同源 /raw 代理缩略图，不经图片优化器
-    <img
-      src={`/api/agent/assets/${asset.id}/raw`}
-      alt=''
-      loading='lazy'
-      onError={() => setFailed(true)}
-      className='bg-muted border-border/60 size-9 shrink-0 rounded-md border object-cover'
-    />
+    <span className='relative size-9 shrink-0'>
+      {
+        // oxlint-disable-next-line nextjs/no-img-element -- 同源 /raw 代理缩略图（视频为 OSS 截帧封面），不经图片优化器
+        <img
+          src={src}
+          alt=''
+          loading='lazy'
+          onError={() => setFailed(true)}
+          className='bg-muted border-border/60 size-9 rounded-md border object-cover'
+        />
+      }
+      {isVideo && (
+        <span className='bg-background/70 absolute inset-0 flex items-center justify-center rounded-md'>
+          <Icons.play className='text-foreground size-4' />
+        </span>
+      )}
+    </span>
   );
 }
 

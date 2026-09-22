@@ -10,6 +10,7 @@ import { getAssetKindMeta } from '../../constants/kinds';
 import { parseAssetReferenceBlock, type ParsedAssetReference } from '../../lib/asset-reference';
 import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
 import { ToolImagePart, type ImageAssetToolPart } from './tool-image-part';
+import { ToolVideoPart, type VideoAssetToolPart } from './tool-video-part';
 import { ToolKnowledgePart, type KnowledgeSearchToolPart } from './tool-knowledge-part';
 
 /**
@@ -89,6 +90,19 @@ export const MessageItem = memo(function MessageItem({
                 part={part as unknown as ImageAssetToolPart}
                 active={isActive}
                 mode={part.type === 'tool-editImageAsset' ? 'edit' : 'create'}
+              />
+            );
+          }
+          if (
+            isToolUIPart(part) &&
+            (part.type === 'tool-createVideoAsset' ||
+              part.type === 'tool-createVideoFromImageAsset')
+          ) {
+            return (
+              <ToolVideoPart
+                key={index}
+                part={part as unknown as VideoAssetToolPart}
+                active={isActive}
               />
             );
           }

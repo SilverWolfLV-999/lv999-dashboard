@@ -3,12 +3,20 @@ import { z } from 'zod';
 import { DEFAULT_MODEL, isModelKey } from '../constants/models';
 import { getSkill } from '../constants/skills';
 import { ASPECT_KEYS, ASPECT_PRESETS } from '../constants/image-models';
+import { DEFAULT_I2V_MODEL, VIDEO_ASPECT_KEYS } from '../constants/video-models';
 import { resolveModel } from './provider';
 import { generateImage } from './image-generation';
-import { editImageAssetCore } from './image-edit';
-import { createAsset, createImageAsset, getAsset, searchAssets } from './service';
+import { editImageAssetCore, MAX_EDIT_SOURCE_BYTES } from './image-edit';
+import {
+  generateVideoAsset,
+  VIDEO_RATE_LIMIT,
+  VIDEO_RATE_WINDOW_SECONDS
+} from './video-generation';
+import { checkRateLimit } from './rate-limit';
+import { createAsset, createImageAsset, createVideoAsset, getAsset, searchAssets } from './service';
 import { ASSET_KIND_VALUES } from './types';
 import { searchKnowledgeByText } from '@/features/knowledge/lib/search';
+import { getSignedUrl } from '@/lib/oss';
 import type { AssetKind } from './types';
 
 /** 单个资产的内容上限（字符数按 UTF-8 字节计算） */
@@ -44,7 +52,15 @@ const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，�
 7. 一次回复可以产出多个资产（例如"三版文案"= 三个 markdown 资产；或先配图再写文案；或先 markdown 文案再配套 HTML 落地页）。
 8. 保存完成后，用一两句话总结产出了什么，不要重复粘贴完整内容。
 9. 默认使用中文；遵循用户指定的语气、风格与篇幅要求。
-10. 不要编造需要实时数据支持的事实；不确定时明确说明。`;
+10. 不要编造需要实时数据支持的事实；不确定时明确说明。
+11. 视频生成（createVideoAsset 文生视频 / createVideoFromImageAsset 图生视频）：
+    - 何时用：用户需要动态画面（短视频、产品演示、动态封面、动画场景）时
+    - 耗时提示：视频生成通常需要 1-5 分钟，调用前明确告知用户等待，不要重复调用
+    - prompt 自包含：详细描述主体、动作、场景、氛围、镜头运动（如“镜头缓慢推进”）
+    - 参数选择：默认 16:9 / 5s；竖版短视频用 9:16；用户显式指定时按用户要求
+    - I2V：基于已有图片资产生成动态版本，用 createVideoFromImageAsset（sourceAssetId 传图片 id）
+    - 成本约束：一次对话不要生成多个视频；用户要求“再来一版”时先确认是否真的需要
+    - 失败处理：超时 / 内容审核 / 网络错误 → 如实告知用户，不要重试超过 1 次`;
 
 const CREATE_ASSET_DESCRIPTION =
   '把一份完整作品保存为结构化资产。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。';
@@ -93,6 +109,53 @@ const editImageAssetInputSchema = z.object({
     .describe('可选：改变输出比例（不传则延续源图构图；需要竖版封面用 "3:4"）')
 });
 
+const videoAspectFieldSchema = z
+  .enum(VIDEO_ASPECT_KEYS)
+  .optional()
+  .describe('可选：视频宽高比。横版用 "16:9"，竖版短视频用 "9:16"，方形 "1:1"；不传默认 "16:9"');
+
+const videoDurationFieldSchema = z
+  .number()
+  .int()
+  .min(2)
+  .max(10)
+  .optional()
+  .describe('可选：视频时长（秒，2-10）；不传默认 5 秒');
+
+const CREATE_VIDEO_ASSET_DESCRIPTION =
+  '用文生视频模型生成一段短视频并保存为视频资产。适合产品演示、动态封面、短广告、动画场景。视频生成通常需要 1-5 分钟，耗时远高于图片，调用前先告知用户等待；prompt 必须自包含描述画面（主体、动作、场景、氛围、镜头运动）；一次对话不要生成多个视频（成本高）。';
+
+const createVideoAssetInputSchema = z.object({
+  title: z.string().min(1).max(100).describe('资产标题'),
+  prompt: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe('文生视频提示词：完整自包含的画面与动作描述（中文优先，含镜头运动）'),
+  aspect: videoAspectFieldSchema,
+  duration: videoDurationFieldSchema
+});
+
+const CREATE_VIDEO_FROM_IMAGE_ASSET_DESCRIPTION =
+  '在已有图片资产的基础上生成动态视频（图生视频），产出新的视频资产。sourceAssetId 必须是真实存在的图片资产 id（来自上文 createImageAsset / findAssets / [引用资产] 块）；prompt 描述希望的画面动作与镜头运动（如“镜头缓慢推进，花瓣随风飘落”）；title 反映结果。视频生成通常需要 1-5 分钟，调用前先告知用户等待。';
+
+const createVideoFromImageAssetInputSchema = z.object({
+  sourceAssetId: z
+    .string()
+    .uuid()
+    .describe(
+      '作为首帧的源图片资产 id（来自上文 createImageAsset / findAssets 结果或消息中的 [引用资产] 块）'
+    ),
+  title: z.string().min(1).max(100).describe('新视频资产的标题'),
+  prompt: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe('画面动作与镜头运动描述（如“镜头缓慢推进，花瓣随风飘落”）'),
+  aspect: videoAspectFieldSchema,
+  duration: videoDurationFieldSchema
+});
+
 const FIND_ASSETS_DESCRIPTION =
   '检索当前用户的资产库（「我的资产」），按标题关键词与类型查找可复用的已有作品，返回候选的元信息（assetId / title / kind / createdAt），不返回正文与图片。当用户提到"我之前那张""这篇文案""上次的封面"等指向已有作品时，先用它确认 assetId：文本资产接着用 readAsset 取正文，图片资产接着用 editImageAsset 修改。消息中已有 [引用资产] 块时不需要调用本工具。';
 
@@ -105,12 +168,12 @@ const findAssetsInputSchema = z.object({
   kind: z
     .enum(ASSET_KIND_VALUES)
     .optional()
-    .describe('限定资产类型：markdown / html / image / design；不确定时可省略'),
+    .describe('限定资产类型：markdown / html / image / design / video；不确定时可省略'),
   limit: z.number().int().min(1).max(20).optional().describe('返回条数上限，默认 8')
 });
 
 const READ_ASSET_DESCRIPTION =
-  '读取指定资产的可用内容，用于"基于它再创作"（改写、扩展、总结、写配套文案等）。markdown / html 返回正文 content；image 返回其生成提示词 prompt（不返回图片本身，要改图请用 editImageAsset）；design 为结构化数据，不支持读取正文。assetId 必须来自 findAssets 结果、上文工具返回值或消息中的 [引用资产] 块。';
+  '读取指定资产的可用内容，用于"基于它再创作"（改写、扩展、总结、写配套文案等）。markdown / html 返回正文 content；image / video 返回其生成提示词 prompt（不返回图像/视频本身，要改图请用 editImageAsset）；design 为结构化数据，不支持读取正文。assetId 必须来自 findAssets 结果、上文工具返回值或消息中的 [引用资产] 块。';
 
 const readAssetInputSchema = z.object({
   assetId: z.string().uuid().describe('要读取的资产 id（必须归属当前用户）')
@@ -141,6 +204,14 @@ export const agentValidationTools = {
   editImageAsset: tool({
     description: EDIT_IMAGE_ASSET_DESCRIPTION,
     inputSchema: editImageAssetInputSchema
+  }),
+  createVideoAsset: tool({
+    description: CREATE_VIDEO_ASSET_DESCRIPTION,
+    inputSchema: createVideoAssetInputSchema
+  }),
+  createVideoFromImageAsset: tool({
+    description: CREATE_VIDEO_FROM_IMAGE_ASSET_DESCRIPTION,
+    inputSchema: createVideoFromImageAssetInputSchema
   }),
   findAssets: tool({
     description: FIND_ASSETS_DESCRIPTION,
@@ -238,6 +309,111 @@ export function editImageAssetTool(params: { userId: string; conversationId: str
 }
 
 /**
+ * 文生视频工具（T2V）。
+ * 视频成本高，先在 execute 入口做限流（video scope，5 次/分/用户），命中直接拒绝，
+ * 不进入昂贵的生成；限流失败以中文错误抛出，由对话内 tool-video-part 展示。
+ * 「提交任务 → 轮询 → 下载」在 generateVideoAsset 内完成（临时 URL 不外泄）；
+ * abortSignal 透传：停止时同步取消轮询与下载（已提交的百炼任务自然完成，无副作用）。
+ */
+function createVideoAssetTool(params: { userId: string; conversationId: string }) {
+  return tool({
+    description: CREATE_VIDEO_ASSET_DESCRIPTION,
+    inputSchema: createVideoAssetInputSchema,
+    execute: async ({ title, prompt, aspect, duration }, { abortSignal }) => {
+      const allowed = await checkRateLimit(
+        'video',
+        params.userId,
+        VIDEO_RATE_LIMIT,
+        VIDEO_RATE_WINDOW_SECONDS
+      );
+      if (!allowed) {
+        throw new Error(
+          `视频生成过于频繁（每 ${VIDEO_RATE_WINDOW_SECONDS} 秒最多 ${VIDEO_RATE_LIMIT} 次），请稍后再试。`
+        );
+      }
+      const { videoBuffer, mime } = await generateVideoAsset({
+        prompt,
+        aspect,
+        duration,
+        signal: abortSignal
+      });
+      const asset = await createVideoAsset({
+        userId: params.userId,
+        conversationId: params.conversationId,
+        title,
+        prompt,
+        videoBuffer,
+        mime
+      });
+      // 返回结构与 createImageAsset 对齐，复用对话内视频卡片渲染
+      return { assetId: asset.id, title, kind: 'video' as const, sizeBytes: asset.sizeBytes };
+    }
+  });
+}
+
+/**
+ * 图生视频工具（I2V）：以已有图片资产作首帧。
+ * 源图校验复用图片编辑（editImageAssetCore）的预检逻辑：归属 / kind='image' / storageKey 非空 / ≤10MB；
+ * 源图经短期签名 URL（TTL 900s，覆盖生成全程）作首帧；产出派生视频资产（sourceAssetId 记录血缘）。
+ */
+function createVideoFromImageAssetTool(params: { userId: string; conversationId: string }) {
+  return tool({
+    description: CREATE_VIDEO_FROM_IMAGE_ASSET_DESCRIPTION,
+    inputSchema: createVideoFromImageAssetInputSchema,
+    execute: async ({ sourceAssetId, title, prompt, aspect, duration }, { abortSignal }) => {
+      const allowed = await checkRateLimit(
+        'video',
+        params.userId,
+        VIDEO_RATE_LIMIT,
+        VIDEO_RATE_WINDOW_SECONDS
+      );
+      if (!allowed) {
+        throw new Error(
+          `视频生成过于频繁（每 ${VIDEO_RATE_WINDOW_SECONDS} 秒最多 ${VIDEO_RATE_LIMIT} 次），请稍后再试。`
+        );
+      }
+      // 归属校验：源资产必须属于当前用户、为图片且已转入 OSS（越权与不存在同样返回 undefined）
+      const source = await getAsset(params.userId, sourceAssetId);
+      if (!source || source.kind !== 'image' || !source.storageKey) {
+        throw new Error(
+          '找不到可用作首帧的源图片资产（可能已删除或不是图片），请用 findAssets 重新确认。'
+        );
+      }
+      if (source.sizeBytes && source.sizeBytes > MAX_EDIT_SOURCE_BYTES) {
+        throw new Error('源图片体积超过输入上限（10MB），无法生成视频。');
+      }
+      // 源图经短期签名 URL 直传百炼作首帧（公网可达；TTL 900s 与图片编辑一致）
+      const firstFrameUrl = await getSignedUrl(source.storageKey, 900);
+      const { videoBuffer, mime } = await generateVideoAsset({
+        prompt,
+        modelKey: DEFAULT_I2V_MODEL,
+        aspect,
+        duration,
+        firstFrameUrl,
+        signal: abortSignal
+      });
+      const asset = await createVideoAsset({
+        userId: params.userId,
+        conversationId: params.conversationId,
+        title,
+        prompt,
+        videoBuffer,
+        mime,
+        sourceAssetId
+      });
+      // 返回结构与 editImageAsset 对齐；sourceAssetId 供后续追溯血缘
+      return {
+        assetId: asset.id,
+        title,
+        kind: 'video' as const,
+        sizeBytes: asset.sizeBytes,
+        sourceAssetId
+      };
+    }
+  });
+}
+
+/**
  * 资产库检索工具：只读元信息，按 userId 过滤（归属校验在 searchAssets 内完成）。
  * 不回传 content / storageKey / 签名 URL：避免工具输出膨胀，也避免图片地址流入模型上下文。
  */
@@ -280,6 +456,14 @@ function readAssetTool(params: { userId: string }) {
           title: asset.title,
           prompt: asset.content ?? '',
           hint: `这是图片资产（prompt 为其生成提示词）；若要在其基础上修改，请调用 editImageAsset 并把 ${assetId} 作为 sourceAssetId。`
+        };
+      }
+      if (asset.kind === 'video') {
+        return {
+          kind: asset.kind,
+          title: asset.title,
+          prompt: asset.content ?? '',
+          hint: '这是视频资产（prompt 为其生成提示词）；视频暂不支持在其基础上直接编辑。'
         };
       }
       return {
@@ -336,12 +520,16 @@ export function buildAgent(params: {
       createAsset: createAssetTool(params),
       createImageAsset: createImageAssetTool(params),
       editImageAsset: editImageAssetTool(params),
+      createVideoAsset: createVideoAssetTool(params),
+      createVideoFromImageAsset: createVideoFromImageAssetTool(params),
       findAssets: findAssetsTool(params),
       readAsset: readAssetTool(params),
       knowledgeSearch: knowledgeSearchTool(params)
     },
     stopWhen: isStepCount(6),
-    timeout: { totalMs: 240_000 },
+    // totalMs 必须 ≥ 视频轮询上限（VIDEO_POLL_TIMEOUT_MS=280s）+ 转存/落库开销，
+    // 否则长视频会被 Agent 总超时提前中止；上限仍 < Route Handler maxDuration=300（平台硬杀）。
+    timeout: { totalMs: 295_000 },
     // 生命周期回调（官方推荐 onStepEnd/onEnd）：记录 step/usage/工具调用，为限额、计费与排障提供数据
     onStepEnd: ({ stepNumber, finishReason, toolCalls, usage }) => {
       console.warn('[agent] step finished', {

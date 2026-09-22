@@ -30,7 +30,7 @@ export interface ConversationsResponse {
 }
 
 /** 资产类型枚举值（单一来源：Agent 工具的 Zod enum 与展示元数据均以此为准） */
-export const ASSET_KIND_VALUES = ['markdown', 'html', 'image', 'design'] as const;
+export const ASSET_KIND_VALUES = ['markdown', 'html', 'image', 'design', 'video'] as const;
 
 export type AssetKind = (typeof ASSET_KIND_VALUES)[number];
 

@@ -14,7 +14,8 @@ export const ASSET_KIND_META: Record<AssetKind, AssetKindMeta> = {
   markdown: { label: 'Markdown', icon: Icons.post },
   html: { label: 'HTML', icon: Icons.code },
   image: { label: '图片', icon: Icons.media },
-  design: { label: '设计', icon: Icons.palette }
+  design: { label: '设计', icon: Icons.palette },
+  video: { label: '视频', icon: Icons.video }
 };
 
 /** 表格筛选/展示顺序 */

@@ -10,6 +10,13 @@ import { DEFAULT_MODEL, isModelKey, MODEL_REGISTRY, type ModelKey } from '../con
  */
 const DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
+/**
+ * 百炼视频生成端点（DashScope 原生协议，非 OpenAI 兼容模式）。
+ * @ai-sdk/alibaba 的 videoBaseURL 默认指向 dashscope-intl（新加坡）；本项目为国内 key，
+ * 必须显式覆盖为经典域名 dashscope.aliyuncs.com（与图片生成通道一致）。
+ */
+const DASHSCOPE_VIDEO_BASE_URL = 'https://dashscope.aliyuncs.com';
+
 function getApiKey(): string {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
@@ -22,6 +29,7 @@ function getApiKey(): string {
 
 let alibabaProvider: ReturnType<typeof createAlibaba> | undefined;
 let compatibleProvider: ReturnType<typeof createOpenAICompatible> | undefined;
+let alibabaVideoProvider: ReturnType<typeof createAlibaba> | undefined;
 
 function getAlibabaProvider() {
   if (!alibabaProvider) {
@@ -39,6 +47,20 @@ function getCompatibleProvider() {
     });
   }
   return compatibleProvider;
+}
+
+/**
+ * 视频生成专用 provider（独立单例）：videoModel() 走 DashScope 原生端点，
+ * 与对话/嵌入的 OpenAI 兼容端点隔离，故单独创建一个配置了 videoBaseURL 的实例。
+ */
+function getAlibabaVideoProvider() {
+  if (!alibabaVideoProvider) {
+    alibabaVideoProvider = createAlibaba({
+      apiKey: getApiKey(),
+      videoBaseURL: DASHSCOPE_VIDEO_BASE_URL
+    });
+  }
+  return alibabaVideoProvider;
 }
 
 /**
@@ -60,4 +82,13 @@ export function resolveModel(key: ModelKey | string): LanguageModel {
  */
 export function resolveEmbeddingModel(): EmbeddingModel {
   return getCompatibleProvider().embeddingModel(EMBEDDING_MODEL);
+}
+
+/**
+ * 视频生成模型：走 @ai-sdk/alibaba 的 videoModel()（DashScope 原生端点，国内地域）。
+ * 返回 Experimental_VideoModelV4（仅实现 doStart/doStatus，异步任务 + 轮询），
+ * 交由 ai 的 experimental_generateVideo 驱动；返回类型由 SDK 推断，可直接作为其 model 入参。
+ */
+export function resolveVideoModel(providerModelId: string) {
+  return getAlibabaVideoProvider().videoModel(providerModelId);
 }

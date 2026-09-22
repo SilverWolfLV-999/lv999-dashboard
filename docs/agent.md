@@ -1,8 +1,9 @@
 # Agent 创作模块
 
-LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然语言对话」转化为可沉淀、可管理的**内容资产**（Markdown / HTML / 图片）。本文档描述其架构、数据模型、流式与停止机制、资产化设计、模型注册表与 API 契约。
+LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然语言对话」转化为可沉淀、可管理的**内容资产**（Markdown / HTML / 图片 / 视频）。本文档描述其架构、数据模型、流式与停止机制、资产化设计、模型注册表与 API 契约。
 
 > 该模块已接入**真实后端**（PostgreSQL + 阿里云 OSS + Redis + 阿里云百炼），非 Mock。运行前需配置对应环境变量（见文末）。
+> 视频产物为 Phase 3 能力，架构与实现细节另见 [docs/video-generation.md](./video-generation.md)。
 
 ---
 
@@ -10,9 +11,9 @@ LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然�
 
 - **入口**：`/dashboard/agent`（新建会话）与 `/dashboard/agent/[conversationId]`（会话页）；产出在 `/dashboard/assets`（我的资产）统一管理。
 - **编排**：AI SDK v7 `ToolLoopAgent`，每请求无状态构建，上下文经闭包注入工具。
-- **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）。
+- **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）、`createVideoAsset`（文生视频 T2V）、`createVideoFromImageAsset`（图生视频 I2V）、`findAssets` / `readAsset`（资产复用）、`knowledgeSearch`（知识库语义检索）。
 - **流式**：`resumable-stream` 可恢复 SSE，刷新 / 切回自动重连；停止走专用端点（跨实例真取消）。
-- **持久化**：Drizzle ORM + PostgreSQL，三张表 `conversations` / `messages` / `assets`；图片二进制存 OSS，库里只存 `storageKey`。
+- **持久化**：Drizzle ORM + PostgreSQL，三张表 `conversations` / `messages` / `assets`；图片 / 视频二进制存 OSS，库里只存 `storageKey`。
 
 ---
 
@@ -28,6 +29,8 @@ src/features/agent/
 │   ├── provider.ts         # resolveModel(key)：百炼直连 + 兼容模式兜底
 │   ├── agent.ts            # buildAgent()、工具定义、agentValidationTools
 │   ├── image-generation.ts # 图片生成通道（直连百炼 REST，T2I / I2I）
+│   ├── image-edit.ts       # 图生图核心流程（工具与直连端点复用）
+│   ├── video-generation.ts # 视频生成通道（AI SDK experimental_generateVideo + 内置轮询，T2V / I2V）
 │   ├── rate-limit.ts       # 固定窗口 Redis 限流
 │   └── stop-signal.ts      # 跨实例停止信号（Redis 标志 + 轮询）
 ├── components/
@@ -37,10 +40,13 @@ src/features/agent/
 ├── constants/
 │   ├── models.ts           # 对话模型注册表（4 个文本模型）
 │   ├── image-models.ts     # 图像模型注册表（2 个）+ 比例预设 ASPECT_PRESETS
-│   ├── kinds.ts            # 资产类型元数据（markdown / html / image）
+│   ├── video-models.ts     # 视频模型注册表（wan3.0-video 默认 + prime 优速 + wan2.6 后备）
+│   ├── skills.ts           # 技能注册表（专家模式，3 个预置技能）
+│   ├── kinds.ts            # 资产类型元数据（markdown / html / image / design / video）
 │   ├── conversation.ts     # 默认标题与标题生成
+│   ├── embedding.ts        # RAG embedding 配置（模型 / 维度 / 批次）
 │   └── limits.ts           # 请求体上限 MAX_REQUEST_BYTES
-└── lib/                    # 前端辅助（如首条消息交接）
+└── lib/                    # 前端辅助（如首条消息交接、资产引用块组装/解析）
 
 src/app/api/agent/          # Route Handlers（REST / SSE）
 src/lib/db/                 # Drizzle schema.ts 与 getDb()
@@ -65,6 +71,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | `userId` | text | Clerk userId |
 | `title` | text | 会话标题（首条消息自动生成） |
 | `model` | text | 会话级模型选择，默认 `deepseek-flash` |
+| `activeSkillId` | text \| null | 会话级技能（专家模式）id，指向代码内技能注册表；null = 通用（无技能） |
 | `activeStreamId` | text \| null | 正在进行的可恢复流 id；无活跃流时为 null |
 | `createdAt` / `updatedAt` | timestamptz | |
 
@@ -83,16 +90,17 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
-| `id` | uuid PK | 图片资产由应用层预生成 id（先转存 OSS 再入库） |
+| `id` | uuid PK | 图片 / 视频资产由应用层预生成 id（先转存 OSS 再入库） |
 | `conversationId` | uuid FK → conversations | `ON DELETE SET NULL`（会话删除，资产保留） |
-| `sourceAssetId` | uuid FK → assets（自引用） | I2I 派生资产指向源图；`ON DELETE SET NULL` |
+| `sourceAssetId` | uuid FK → assets（自引用） | I2I / I2V 派生资产指向源图；`ON DELETE SET NULL` |
 | `userId` | text | 归属用户 |
 | `source` | text | `agent`（生成）/ `upload`（导入），默认 `agent` |
-| `kind` | text | `markdown` / `html` / `image` |
+| `kind` | text | `markdown` / `html` / `image` / `design` / `video` |
 | `title` | text | 资产标题 |
 | `status` | text | 默认 `ready` |
-| `content` | text \| null | 文本资产存正文；图片资产存生成 prompt（可溯源） |
-| `storageKey` | text \| null | OSS 对象 key（图片等二进制非空） |
+| `favorite` | boolean | 用户收藏标记，默认 false；任意 kind 可收藏，列表支持「仅看收藏」筛选 |
+| `content` | text \| null | 文本资产存正文；图片 / 视频资产存生成 prompt（可溯源）；design 资产存文档 JSON |
+| `storageKey` | text \| null | OSS 对象 key（图片 / 视频 / design 预览 PNG 等二进制非空） |
 | `mime` / `sizeBytes` | | |
 | `createdAt` / `updatedAt` | timestamptz | 索引：`(userId, createdAt)`、`(conversationId)` |
 
@@ -131,35 +139,68 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 `service.ts` 的 `syncConversationMessages` 采用「按所有权更新」：仅对本轮新产生的消息（`finalMessages` 超出 `originalMessages` 的尾部）执行冲突更新，其余旧消息一律 `onConflictDoNothing`，避免用陈旧客户端视图覆盖服务端较新版本。`cleanupSupersededResponses` 在新请求开始阶段清理被取代的残留 assistant 消息（带守卫，仅当目标 user 消息仍是会话最后一条）。
 
+### 4.5 资产引用（`[引用资产]` 机器可读块）
+
+用户在输入区点「引用资产」按钮（[`asset-reference-picker.tsx`](../src/features/agent/components/chat/asset-reference-picker.tsx)）从「我的资产」挑选若干资产，输入区上方展示为可移除 chip；提交时 [`buildAssetReferenceText`](../src/features/agent/lib/asset-reference.ts) 在用户原文前拼接机器可读块：
+
+```
+[引用资产]
+- 《产品主图》 kind=image id=<uuid>
+- 《秋日文案》 kind=markdown id=<uuid>
+
+<用户原文>
+```
+
+- **为什么**：让模型**确定性地**拿到 assetId，无需再调 `findAssets` 检索（指令第 5 条明确「消息中出现 [引用资产] 块时，直接使用块内给出的 id」）。
+- **仍是普通 text 消息**：不改流式协议、不影响 `validateUIMessages`。
+- **解析**：[`parseAssetReferenceBlock`](../src/features/agent/lib/asset-reference.ts) 在气泡渲染与会话自动标题时剥离引用块只留用户原文（标题不应带机器可读块）。
+- **标题归一**：标题内的换行 / 连续空白归一为单空格，避免破坏逐行解析。
+
 ---
 
 ## 5. Agent 与工具
 
-`buildAgent()`（[`agent.ts`](../src/features/agent/api/agent.ts)）每请求构建一个 `ToolLoopAgent`：`stopWhen: isStepCount(6)`、`timeout.totalMs: 240_000`、`onStepEnd` / `onEnd` 记录 step / usage。工具：
+`buildAgent()`（[`agent.ts`](../src/features/agent/api/agent.ts)）每请求构建一个 `ToolLoopAgent`：`stopWhen: isStepCount(6)`、`timeout.totalMs: 295_000`（需 ≥ 视频轮询上限 280s + 转存/落库，仍 < 路由 `maxDuration=300`）、`onStepEnd` / `onEnd` 记录 step / usage。工具：
 
 | 工具 | 输入 | 行为 |
 | --- | --- | --- |
 | `createAsset` | `title` / `kind`(markdown\|html) / `content` | 文本作品直接落库 `assets.content`；`≤200KB`（`MAX_ASSET_SIZE_BYTES`）|
 | `createImageAsset` | `title` / `prompt` / `aspect?` | 文生图：生成 → 立即下载 → 转存 OSS → 入库图片资产 |
 | `editImageAsset` | `sourceAssetId` / `title` / `instruction` / `aspect?` | 图生图（I2I）：校验源图归属/kind/`storageKey`/≤10MB → 签名 URL 直传百炼 → 产出派生资产（`sourceAssetId` 记录血缘）|
+| `createVideoAsset` | `title` / `prompt` / `aspect?` / `duration?(2..10)` | 文生视频（T2V）：工具内限流（video scope）→ `experimental_generateVideo`（内置轮询）→ 下载 → 转存 OSS → 入库视频资产；详见 [docs/video-generation.md](./video-generation.md) |
+| `createVideoFromImageAsset` | `sourceAssetId` / `title` / `prompt` / `aspect?` / `duration?` | 图生视频（I2V）：限流 → 校验源图（归属/`kind='image'`/`storageKey`/≤10MB）→ 签名 URL（TTL 900s）作首帧 → I2V → 入库（`sourceAssetId` 血缘）|
 | `findAssets` | `query?` / `kind?` / `limit?` | 按标题关键词 + 类型检索用户资产库，返回候选元信息（不含正文/URL）——按【标题】找「作品」供复用/改写 |
-| `readAsset` | `assetId` | 读取资产内容：markdown/html 返回正文、image 返回生成 prompt（design 不支持），供“基于它再创作” |
+| `readAsset` | `assetId` | 读取资产内容：markdown/html 返回正文、image/video 返回生成 prompt（design 不支持），供“基于它再创作” |
 | `knowledgeSearch` | `query` / `topK?` | 在 RAG 知识库中按【语义】检索「资料」片段（问答/综述），返回 topK 片段 + 来源标题；见 [docs/knowledge-base.md](./knowledge-base.md) |
 
 > 区分：`findAssets` 按标题找「作品」（复用/改写/改图）；`knowledgeSearch` 按语义找「资料」（基于内容作答并标注来源）。对话中的 `[引用资产]` 块给出的 id 可直接使用，无需再检索。
 
-工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema，全部工具均同时登记到 validation 集与 `buildAgent.tools`），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
+工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema，全部 8 个工具均同时登记到 validation 集与 `buildAgent.tools`），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
+
+### 5.1 技能系统（专家模式）
+
+会话级「专家模式」：用户为一段会话选定一个技能，服务端在 `buildAgent` 处把技能指令**追加**到基础指令后（不新增工具、不做渐进披露）。
+
+- **注册表**（[`constants/skills.ts`](../src/features/agent/constants/skills.ts)）：v1 全部在代码中定义（全局预置、非用户私有数据）；后续增删技能只改本文件。`id` 是存库的稳定 key（`conversations.active_skill_id`），改名不影响已持久化的会话。
+- **当前 3 个技能**：`ecommerce-imagery`（电商套图设计专家）/ `xiaohongshu`（小红书图文专家）/ `general-creation`（通用创作专家）。
+- **数据结构** `SkillRegistryEntry`：`{ id, name, description, instructions, placeholder? }`。`instructions` 是覆盖进 system 的专家人设 + 工作流；`placeholder` 是激活后输入框引导语。
+- **UI**（[`skill-selector.tsx`](../src/features/agent/components/chat/skill-selector.tsx)）：输入区一枚 pill（当前技能名或「通用」）+ 下拉列表（搜索 + 名称 + 何时用）。与模型选择器同构：选中即回调持久化（会话级）；激活后 pill 带 ✕ 一键清除回「通用」。
+- **持久化**：`conversations.activeSkillId` 列（text，可空）；`createConversation` / `updateConversation` 支持传入；`chat` 路由读会话的 `activeSkillId` 传入 `buildAgent`。
+- **防御**：未知 / 已下架 id（`getSkill` → undefined）回退基础指令，不报错（`isSkillId` 校验）。
 
 ---
 
 ## 6. 资产化
 
-- **三类资产**：`markdown` / `html` / `image`（元数据统一在 [`constants/kinds.ts`](../src/features/agent/constants/kinds.ts)，对话卡片 / 预览弹窗 / 表格列共用）。另有第四类 `design`（设计画布产物）由设计模块写入，见 [docs/design-editor.md](./design-editor.md)。
+- **五类资产**：`markdown` / `html` / `image` / `design` / `video`（元数据统一在 [`constants/kinds.ts`](../src/features/agent/constants/kinds.ts)，对话卡片 / 预览弹窗 / 表格列共用）。`design`（设计画布产物）由设计模块写入，见 [docs/design-editor.md](./design-editor.md)；`video`（视频产物）见 [docs/video-generation.md](./video-generation.md)。
 - **文本资产**：正文直接存 `content` 列（Phase 1 决策：MVP 不引入 OSS，`storageKey` / `mime` / `sizeBytes` 字段已预留）。
-- **图片资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。
-- **血缘**：I2I 产物通过 `sourceAssetId` 指向源图；预览弹窗展示「基于《源标题》修改」；源图删除后 `SET NULL`，派生图仍可访问。
+- **图片 / 视频资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。视频封面经 OSS 原生截帧（`videoSnapshotUrl`）动态生成，经 `/raw?snapshot=1` 同源代理下发（列表不渲染 `<video>`）。
+- **血缘**：I2I 产物与 I2V 产物通过 `sourceAssetId` 指向源图；预览弹窗展示「基于《源标题》修改」；源图删除后 `SET NULL`，派生资产仍可访问。
+- **收藏**（`favorite` boolean 列）：任意 kind 可收藏；列表支持「仅看收藏」筛选（`AssetFilters.favorite`）；切换走 `POST /api/agent/assets/[id]/favorite`（限流 60 次/分）。
 - **下载**（[`assets/[id]/download`](../src/app/api/agent/assets/[id]/download/route.ts)）：有 `storageKey` → 302 跳转带附件名的短期签名 URL（TTL 300s）；文本资产直接返回 `content`。
 - **删除**：删 DB 行的同时顺带删 OSS 对象（失败仅告警不阻塞）。
+- **批量删除**（[`assets/batch-delete`](../src/app/api/agent/assets/batch-delete/route.ts)）：单次最多 100 个 uuid，逐个走 `deleteAsset`（含所有权校验与 OSS 清理）；不存在的 id 静默跳过，返回实际删除计数；全部未命中时 404。限流 10 次/分。
+- **直连图片编辑**（[`assets/[id]/edit`](../src/app/api/agent/assets/[id]/edit/route.ts)）：图片资产行操作「继续修改」直连 I2I（不经聊天），核心流程与聊天内 `editImageAsset` 工具复用（[`image-edit.ts`](../src/features/agent/api/image-edit.ts) 的 `editImageAssetCore`）；产出派生资产（`sourceAssetId` 记录血缘），返回新资产 id。限流 20 次/分（I2I 是付费模型调用 ≈0.20 元/次）。
 
 ---
 
@@ -187,6 +228,16 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 比例预设 `ASPECT_PRESETS`（key → `"宽*高"`，全部 1K 计费档）：`1:1` / `3:4` / `4:3` / `3:2` / `2:3` / `16:9` / `9:16`。
 
+### 视频模型（[`constants/video-models.ts`](../src/features/agent/constants/video-models.ts)）
+
+| key | 说明 | 模式 | 默认 |
+| --- | --- | --- | --- |
+| `wan3.0-video` | 万相 3.0（官方推荐最新，原生音画同步，2-30s）| 统一 T2V+I2V | ✅ |
+| `wan3.0-video-prime` | 万相 3.0 优速版（生成更快）| 统一 T2V+I2V | |
+| `wan2.6-t2v` / `wan2.6-i2v-flash` | 万相 2.6（后备）| t2v / i2v | |
+
+视频生成走 AI SDK v7 `experimental_generateVideo` + `@ai-sdk/alibaba` 的 `videoModel()`（provider 内置异步任务轮询），经**独立单例** `getAlibabaVideoProvider()` 配置国内 `videoBaseURL='https://dashscope.aliyuncs.com'`（默认指向 intl 新加坡，国内 key 必须覆盖）。完整架构与封面截帧机制见 [docs/video-generation.md](./video-generation.md)。
+
 ---
 
 ## 8. 图片生成通道
@@ -210,14 +261,18 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | POST | `/api/agent/chat` | 发起生成，返回可恢复 SSE 流（`runtime=nodejs`，`maxDuration=300`）|
 | GET | `/api/agent/chat/[id]/stream` | 重连进行中的流（`resume`）|
 | POST | `/api/agent/chat/[id]/stop` | 停止生成（保存快照 + 写停止信号）|
-| GET | `/api/agent/conversations` | 会话列表 |
-| PATCH / DELETE | `/api/agent/conversations/[id]` | 更新（标题 / 模型）/ 删除会话 |
-| GET | `/api/agent/assets` | 资产列表（分页 / 搜索 / kind 筛选 / 排序）|
+| GET | `/api/agent/conversations` | 会话列表（含每会话资产数 `assetCounts`，供侧边栏 badge）|
+| POST | `/api/agent/conversations` | 创建会话（可带 `activeSkillId` 激活技能）|
+| PATCH / DELETE | `/api/agent/conversations/[id]` | 更新（标题 / 模型 / `activeSkillId`）/ 删除会话 |
+| GET | `/api/agent/assets` | 资产列表（分页 / 搜索 / kind 筛选 / `favorite` 筛选 / 排序）|
 | POST | `/api/agent/assets` | 创建 design 资产（限流 scope `design` 30/分）——详见 design-editor.md |
 | GET / DELETE | `/api/agent/assets/[id]` | 资产详情（有 `storageKey` 时附签名 previewUrl，cover image + design）/ 删除 |
 | PATCH | `/api/agent/assets/[id]` | 更新 design 资产（归属且 `kind==='design'`）|
-| GET | `/api/agent/assets/[id]/download` | 下载（image / design 走 302 签名 URL，文本直接返回）|
-| GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片、规避 canvas 跨域污染）|
+| POST | `/api/agent/assets/[id]/favorite` | 收藏 / 取消收藏（任意 kind，限流 60/分）|
+| POST | `/api/agent/assets/[id]/edit` | 直连图片编辑 I2I（不经聊天，限流 20/分，`maxDuration=300`）|
+| GET | `/api/agent/assets/[id]/download` | 下载（image / design / video 有 `storageKey` 走 302 签名 URL，扩展名映射 video→mp4；文本直接返回）|
+| GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片规避 canvas 跨域污染；带 `?snapshot=1` 且 video 时回 OSS 截帧封面）|
+| POST | `/api/agent/assets/batch-delete` | 批量删除（单次 ≤100 uuid，限流 10/分）|
 | GET / POST | `/api/agent/knowledge/documents` | 知识库文档列表 / 新增（同步摄取，限流 scope `knowledge` 30/分）——见 knowledge-base.md |
 | DELETE | `/api/agent/knowledge/documents/[id]` | 删除文档（片段级联删除）|
 | POST | `/api/agent/knowledge/documents/[id]/retry` | 重新摄取（失败文档重试）|
@@ -237,12 +292,18 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 [`rate-limit.ts`](../src/features/agent/api/rate-limit.ts) 复用 Upstash Redis 计数；Redis 异常时 **fail-open**（放行并记录）：
 
-| scope | 限额 | 窗口 |
-| --- | --- | --- |
-| `chat` | 20 次 | 60s / 用户 |
-| `stop` | 60 次（从宽，保证停止始终可用）| 60s / 用户 |
+| scope | 限额 | 窗口 | 说明 |
+| --- | --- | --- | --- |
+| `chat` | 20 次 | 60s / 用户 | 对话生成 |
+| `stop` | 60 次（从宽，保证停止始终可用）| 60s / 用户 | 停止生成 |
+| `design` | 30 次 | 60s / 用户 | 设计画布保存 |
+| `knowledge` | 30 次 | 60s / 用户 | 知识库文档新增 |
+| `favorite` | 60 次 | 60s / 用户 | 收藏切换（轻量 DB 写）|
+| `image-edit` | 20 次 | 60s / 用户 | 直连 I2I（付费模型调用 ≈0.20 元/次）|
+| `batch-delete` | 10 次 | 60s / 用户 | 批量删除（单次 ≤100 个）|
+| `video` | 5 次 | 60s / 用户 | 视频生成（成本高于图片）——**在工具 `execute` 内校验**，命中抛中文错误由视频卡片展示（MVP 视频仅走流式 chat 路由，无法返回 HTTP 429）|
 
-请求体上限 `MAX_REQUEST_BYTES = 4MB`（chat 与 stop 共用）；chat 另限 `MAX_MESSAGES=200`、`MAX_PARTS_PER_MESSAGE=500`。
+请求体上限 `MAX_REQUEST_BYTES = 4MB`（chat / stop / favorite / image-edit / batch-delete 共用）；chat 另限 `MAX_MESSAGES=200`、`MAX_PARTS_PER_MESSAGE=500`。
 
 ---
 
@@ -251,8 +312,8 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | 变量 | 说明 |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL 连接串；密码特殊字符需 URL 编码（`@`→`%40`）|
-| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key（对话与图片模型共用）|
-| `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS（私有 bucket，需为部署域名配置 CORS）|
+| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key（对话 / 图片 / 视频 / 嵌入模型共用）|
+| `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS（私有 bucket；图片 / 视频等二进制资产，视频封面需桶开通视频截帧能力）|
 | `REDIS_URL` | Redis 连接串（需 pub/sub 支持的 TLS 连接，推荐 Upstash）|
 
 完整清单见 [`env.example.txt`](../env.example.txt)。
@@ -273,6 +334,6 @@ bun scripts/db-apply-sql.ts
 
 ### 冒烟脚本
 
-`scripts/` 下保留可复跑的外部连通性 / 回归脚本：`models-smoke.ts`（对话模型）、`image-smoke.ts`（文生图）、`edit-smoke.ts`（图生图）、`oss-smoke.ts`（OSS 读写）、`resumable-smoke.ts`（流恢复）、`db-apply-sql.ts`（应用迁移 SQL）。
+`scripts/` 下保留可复跑的外部连通性 / 回归脚本：`models-smoke.ts`（对话模型）、`image-smoke.ts`（文生图）、`edit-smoke.ts`（图生图）、`video-smoke.ts`（文生视频 + OSS 截帧封面）、`oss-smoke.ts`（OSS 读写）、`resumable-smoke.ts`（流恢复）、`favorite-smoke.ts`（收藏）、`overview-smoke.ts`（总览统计）、`knowledge-smoke.ts`（知识库检索）、`db-apply-sql.ts`（应用迁移 SQL）。
 
 > 真实外部调用测试须显式设置超时，否则默认超时中断会遗留测试数据。
