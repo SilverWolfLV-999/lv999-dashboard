@@ -19,9 +19,9 @@ export function AlertModal({
   onClose,
   onConfirm,
   loading,
-  title = 'Are you sure?',
-  description = 'This action cannot be undone.',
-  confirmLabel = 'Continue'
+  title = '您确定吗？',
+  description = '此操作无法撤销。',
+  confirmLabel = '继续'
 }: AlertModalProps) {
   const [isMounted, setIsMounted] = useState(false);
 
@@ -37,7 +37,7 @@ export function AlertModal({
     <Modal title={title} description={description} isOpen={isOpen} onClose={onClose}>
       <div className='flex w-full items-center justify-end space-x-2 pt-6'>
         <Button variant='outline' onClick={onClose}>
-          Cancel
+          取消
         </Button>
         <LoadingButton loading={loading} type='button' variant='destructive' onClick={onConfirm}>
           {confirmLabel}
