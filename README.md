@@ -226,7 +226,6 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 - [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强；支持上传 PDF/Office/Markdown 文件（`@firecrawl/anydoc` 解析为结构化 Markdown）
 - [x] 总览仪表盘接真实数据：资产统计 / 类型分布 / 30 天趋势 / 最近创作
 - [x] **视频产物（Phase 3）**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
-- [ ] 替换预览截图与 OG 图（当前为 AI 生成的宣传图，后期将替换为真实界面截图）
 - [ ] 按需扩展业务模块
 
 ## 许可证与致谢

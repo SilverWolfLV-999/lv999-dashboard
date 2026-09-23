@@ -36,9 +36,9 @@ export const metadata: Metadata = {
     images: [
       {
         url: '/lv999-dashboard.png',
-        width: 1792,
-        height: 1024,
-        alt: 'LV999 Dashboard 宣传图'
+        width: 1600,
+        height: 800,
+        alt: 'LV999 Dashboard —— 功能拉满的完全体管理后台'
       }
     ]
   },
