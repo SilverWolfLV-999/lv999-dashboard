@@ -14,7 +14,7 @@ LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然�
 - **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）、`createVideoAsset`（文生视频 T2V）、`createVideoFromImageAsset`（图生视频 I2V）、`findAssets` / `readAsset`（资产复用）、`knowledgeSearch`（知识库语义检索）。
 - **流式**：`resumable-stream` 可恢复 SSE，刷新 / 切回自动重连；停止走专用端点（跨实例真取消）。
 - **持久化**：Drizzle ORM + PostgreSQL，三张表 `conversations` / `messages` / `assets`；图片 / 视频二进制存 OSS，库里只存 `storageKey`。
-- **计费**：对话 / 生图 / 生视频 / 知识库摄取均经 Credits `checkBalance` 入口拦截（余额 ≤0 返回 402）、按真实 usage「发起后按结果扣」，杜绝陌生人刷爆作者 API Key；详见 [docs/credits.md](./credits.md)。
+- **计费**：对话 / 生图 / 生视频 / 知识库摄取均经 Credits `checkBalance` 入口拦截（余额 ≤0 返回 402）、按真实 usage「发起后按结果扣」，杜绝陌生人刷爆作者 API Key；额度由管理员经**用户管理后台** `/dashboard/admin/users` 发放 / 设定（仅 `ADMIN_USER_IDS` 白名单）；详见 [docs/credits.md](./credits.md)。
 
 ---
 

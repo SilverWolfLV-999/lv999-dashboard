@@ -12,8 +12,8 @@ LV999 Dashboard 的**成本管控底座**：Agent 的对话 / 生图 / 生视频
 - **扣费时机**：按真实 usage「**发起后按结果扣**」——对话在流 `onEnd` 按累计 token 结算；图片/视频在上游调用返回后按结果判定；知识库在摄取成功后按 embedding tokens 结算。
 - **计量**：后端按 token / 张 / 秒精算，前端只展示余额与流水，不暴露档位估算。
 - **余额展示**（不常驻）：账号下拉菜单显示余额 + `/dashboard/profile/credits` 看流水。
-- **发放**：仅 CLI `scripts/credit-admin.ts`（能访问 `DATABASE_URL` 即视为管理员，无应用内角色）。
-- **管理员同走积分**：无 `unlimited` 特权，只是多一个「能给自己加分」的 CLI 动作。
+- **发放**：管理员经**用户管理后台** `/dashboard/admin/users`（`ADMIN_USER_IDS` 白名单 + 服务端 `isAdmin` 校验，复用 `grantCredits`/`setBalance`）；CLI `scripts/credit-admin.ts` 保留为应急后备（能访问 `DATABASE_URL` 即视为管理员）。
+- **管理员同走积分**：无 `unlimited` 特权，只是多一个「能给自己/他人加分」的管理动作。
 
 ---
 
@@ -54,7 +54,7 @@ LV999 Dashboard 的**成本管控底座**：Agent 的对话 / 生图 / 生视频
 | `setBalance({userId,amount,note})` | 直接设定余额 + 写调整流水（`delta=新-旧`）|
 | `listLedger(userId, filters)` | 流水分页（kind 可选筛选，createdAt 倒序）|
 
-客户端经 `api/queries.ts`（`creditKeys` + `balanceQueryOptions`/`ledgerQueryOptions`）走 `/api/agent/credits*` 只读查询；**无写端点暴露给前端**（grant 仅 CLI，扣费在各入口内部）。
+客户端经 `api/queries.ts`（`creditKeys` + `balanceQueryOptions`/`ledgerQueryOptions`）走 `/api/agent/credits*` 只读查询；**普通用户前端无写端点**（扣费在各入口内部）。发放/设定改由**管理员后台**经 `/api/admin/users/[id]/credits`（`isAdmin` 403 守卫）复用 `grantCredits`/`setBalance`，另有 CLI 应急后备。
 
 ---
 
@@ -141,9 +141,11 @@ chargeOnGenerationResult({ userId, kind, run, buildCharge, fallbackCharge })
 
 ---
 
-## 9. 管理员 CLI（`scripts/credit-admin.ts`）
+## 9. 管理员发放（Web 后台 + CLI）
 
-复用 `features/credits/api/service`（经 `getDb()`）；能运行脚本（持 `DATABASE_URL`）即管理员，无应用内角色判定：
+**主路径**：用户管理后台 `/dashboard/admin/users`（仅 `ADMIN_USER_IDS` 白名单管理员，服务端 `isAdmin` 403 守卫）——列出全部用户 + 余额，行内「调整 Credits」对话框选 加/设 + 数额 + 备注，经 `POST /api/admin/users/[id]/credits` 复用 `grantCredits`/`setBalance`；同页可级联删除用户。
+
+**应急后备**：CLI `scripts/credit-admin.ts`，复用 `features/credits/api/service`（经 `getDb()`）；能运行脚本（持 `DATABASE_URL`）即管理员，无应用内角色判定：
 
 ```bash
 bun scripts/credit-admin.ts grant <userId> <amount> [--note "..."]   # 发放（upsert + 流水）
@@ -166,7 +168,7 @@ bun scripts/credit-admin.ts set <userId> <amount> [--note "..."]      # 直接�
 
 ## 11. 明确延后（未实现）
 
-预扣/冻结/退款、有效期/周期清零、多来源扣款排序、支付、低余额警告、事前估算弹窗/档位展示、应用内管理员后台页与 admin 角色（grant 仅 CLI）、`knowledgeSearch` 检索计费、Clerk webhook 自动开户、余额变负的阻断（接受单次透支）。
+预扣/冻结/退款、有效期/周期清零、多来源扣款排序、支付、低余额警告、事前估算弹窗/档位展示、基于 Clerk 角色的 admin 权限（当前用 `ADMIN_USER_IDS` env 白名单）、`knowledgeSearch` 检索计费、Clerk webhook 自动开户、余额变负的阻断（接受单次透支）。
 
 ---
 

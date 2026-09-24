@@ -2,7 +2,7 @@
 
 > **LV999** —— lv = level。功能拉满、什么都有、完全体的管理后台。
 
-一个全功能的管理后台仪表盘：认证、多租户、权限、数据表格、表单、图表、主题……全部端到端可用。不是静态演示，而是一个能直接长出真实业务的地基——目前已在其上长出一个生产级的 **AI Agent 创作模块**（对话创作、专家模式、文生图 / 图生图、文生视频 / 图生视频、资产沉淀）、一个 **设计画布编辑器**（Konva 可视化创作）与一个 **RAG 知识库**（pgvector 语义检索增强）。
+一个全功能的管理后台仪表盘：认证、权限、数据表格、表单、图表、主题……全部端到端可用。不是静态演示，而是一个能直接长出真实业务的地基——目前已在其上长出一个生产级的 **AI Agent 创作模块**（对话创作、专家模式、文生图 / 图生图、文生视频 / 图生视频、资产沉淀）、一个 **设计画布编辑器**（Konva 可视化创作）与一个 **RAG 知识库**（pgvector 语义检索增强）。
 
 ![LV999 Dashboard 预览](./public/lv999-dashboard.png)
 
@@ -10,7 +10,7 @@
 
 LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、生产级、快速起步：
 
-- **功能全部可运行**：数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证与组织端到端打通。
+- **功能全部可运行**：数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证端到端打通。
 - **工程模式生产级**：数据层遵循 TanStack Query 官方 SSR 模式，按 feature 组织模块，每个模块的 `api/service.ts` 是接入真实后端时唯一需要替换的文件。
 - **AI Agent 创作模块已落地**：自然语言对话 → 生成 Markdown / HTML / 图片 / 视频作品并沉淀为可管理的资产；已接入真实后端（PostgreSQL + 对象存储 + Redis + 大模型），非 Mock，详见 [docs/agent.md](./docs/agent.md)。
 - **专家模式（技能系统）**：会话级选定一个专家技能（电商套图 / 小红书图文 / 通用创作），Agent 按其人设与工作流持续协作。
@@ -28,13 +28,13 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；支持**上传 PDF / Word / PPT / Excel / Markdown 等文件**（`@firecrawl/anydoc` 解析为结构化 Markdown）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
 - **我的资产**：Agent 与设计画布的产出统一沉淀为可管理资产（markdown / html / image / design / video 五类）；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除 / **收藏** / **批量删除**，图片 / 视频经 OSS 签名 URL 访问（视频列表显示 OSS 截帧封面）
 - **直连图片编辑**：图片资产行操作「继续修改」直连 I2I（不经聊天），产出派生资产并记录血缘
-- **成本管控（Credits）**：对话 / 生图 / 生视频 / 知识库摄取按 Credits 扣费；新用户默认 **0 分**、余额不足即 402 拒绝，杜绝陌生人刷爆作者 API Key；管理员经 CLI 发放额度，账号下拉见余额、`/dashboard/profile/credits` 看流水
+- **成本管控（Credits）**：对话 / 生图 / 生视频 / 知识库摄取按 Credits 扣费；新用户默认 **0 分**、余额不足即 402 拒绝，杜绝陌生人刷爆作者 API Key；管理员经**用户管理后台**（或 CLI）发放 / 设定额度，账号下拉见余额、`/dashboard/profile/credits` 看流水
 - **总览仪表盘**：统计卡片 + Recharts 图表；基于并行路由（Parallel Routes），每个区块拥有独立的加载与错误状态；**已接真实数据**（资产统计 / 类型分布 / 30 天趋势 / 最近创作）
 - **数据表格**：服务端预取 + 客户端查询缓存 + 水合（HydrationBoundary），搜索 / 筛选 / 排序 / 分页与 URL 同步（nuqs），`shallow: true` 让交互零 RSC 往返
 - **表单体系**：TanStack Form + Zod；可复用字段组件、多步表单、对话框 / 抽屉表单，提交后自动失效相关查询缓存
 - **认证与账户**：Clerk 提供无密码登录、社交登录、企业 SSO 与账户管理
-- **多租户工作区**：Clerk Organizations —— 创建、切换、管理组织与团队角色
-- **导航 RBAC**：按组织 / 权限 / 角色过滤菜单项
+- **管理员用户管理后台**：`ADMIN_USER_IDS` env 白名单 + 服务端 `isAdmin` 强制校验；`/dashboard/admin/users` 列出全部用户、调整其 Credits、级联删除账号（Clerk + 业务数据 + OSS），入口在账号下拉（仅管理员可见）
+- **导航 RBAC**：按权限 / 角色过滤菜单项（客户端仅 UX 过滤，安全校验在服务端）
 - **命令面板**：⌘K / Ctrl+K 快速搜索与跳转（kbar）
 - **主题系统**：基于 `data-theme` 与 CSS 变量的可扩展多主题架构（当前内置 Vercel 主题）
 - **Infobar 提示侧栏**：为任意页面提供上下文说明与文档入口
@@ -47,7 +47,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | 语言 | TypeScript 5.7（strict） |
 | UI 组件 | shadcn/ui（Base UI primitives） |
 | 样式 | Tailwind CSS v4 |
-| 认证 / 组织 | Clerk |
+| 认证 | Clerk |
 | AI / Agent | AI SDK v7（`ai` + `@ai-sdk/alibaba` / `@ai-sdk/openai-compatible`），百炼（阿里云 Model Studio） |
 | 设计画布 | Konva + react-konva（2D canvas） |
 | 向量检索 / RAG | pgvector（阿里云 RDS） + 百炼 `text-embedding-v4` embedding |
@@ -74,8 +74,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 | `/dashboard/design` | 设计画布：新建空白画布 |
 | `/dashboard/design/[id]` | 设计画布：打开已存设计继续编辑 |
 | `/dashboard/knowledge` | RAG 知识库：文档管理（新增 / 列表 / 删除 / 重试） |
-| `/dashboard/workspaces` | 工作区管理：Clerk `<OrganizationList />` |
-| `/dashboard/workspaces/team` | 团队管理：Clerk `<OrganizationProfile />`（需激活组织） |
+| `/dashboard/admin/users` | 用户管理（仅管理员）：列出全部用户、调整 Credits、级联删除账号 |
 | `/dashboard/profile` | 个人资料与安全设置（Clerk 账户管理） |
 | `/auth/sign-in`、`/auth/sign-up` | 登录 / 注册 |
 
@@ -102,6 +101,7 @@ bun run dev
 | 变量 | 说明 |
 | --- | --- |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` | Clerk 密钥，必填 |
+| `ADMIN_USER_IDS` | 平台管理员白名单（逗号分隔的 Clerk userId），用户管理后台鉴权；留空 = 无管理员 |
 | `NEXT_PUBLIC_APP_URL` | 应用公开地址（用于 metadataBase，本地为 `http://localhost:3000`） |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` 等 | 登录 / 注册与重定向地址（默认值已够用） |
 | `BUILD_STANDALONE` | Docker / 自托管时设为 `"true"`，启用 standalone 输出 |
@@ -110,7 +110,7 @@ bun run dev
 | `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS（图片等二进制资产） |
 | `REDIS_URL` | Redis 连接串（流恢复 / 停止信号 / 限流，需 pub/sub） |
 
-后台骨架仅需 Clerk 密钥即可运行；`DATABASE_URL` 及之后的变量仅 Agent 创作模块需要。完整变量说明见 `env.example.txt`；Clerk 的完整配置（Organizations 等）见 [docs/clerk_setup.md](./docs/clerk_setup.md)；Agent 模块的完整配置与架构见 [docs/agent.md](./docs/agent.md)。
+后台骨架仅需 Clerk 密钥即可运行；`DATABASE_URL` 及之后的变量仅 Agent 创作模块需要。完整变量说明见 `env.example.txt`；Clerk 的完整配置见 [docs/clerk_setup.md](./docs/clerk_setup.md)；Agent 模块的完整配置与架构见 [docs/agent.md](./docs/agent.md)。
 
 ### 常用命令
 
@@ -135,16 +135,16 @@ src/
 │   │   ├── assets/         # 我的资产（资产表格）
 │   │   ├── design/         # 设计画布（新建 + [id] 编辑页）
 │   │   ├── knowledge/      # RAG 知识库（文档管理）
-│   │   ├── workspaces/     # 工作区与团队
+│   │   ├── admin/          # 用户管理后台（仅管理员：列用户 / 调 Credits / 删号）
 │   │   └── profile/        # 个人资料
-│   └── api/agent/          # Route Handlers：chat（SSE 流）/ conversations / assets（含 design 写入与 /raw 代理）/ knowledge
+│   └── api/                # Route Handlers：agent（chat / conversations / assets / knowledge）+ admin（用户管理）
 ├── components/
 │   ├── ui/                 # shadcn/ui 组件库
 │   ├── layout/             # 布局（侧边栏、顶栏、Infobar 等）
 │   ├── forms/              # 表单字段组件（Field anatomy）
 │   ├── themes/             # 主题系统
 │   └── kbar/               # ⌘K 命令面板
-├── features/               # 按功能划分的模块（agent、design、knowledge、auth、overview、profile）
+├── features/               # 按功能划分的模块（agent、design、knowledge、admin、auth、overview、profile）
 │   └── <name>/
 │       ├── api/            # types.ts → service.ts → queries.ts
 │       ├── components/
@@ -195,7 +195,11 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 ### Credits 成本管控
 
-Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的百炼 API Key（真实费用），故内置 Credits 计费底座：新注册用户默认 **0 分**，各付费入口发起上游调用前 `checkBalance`（余额 ≤0 返回 **402**），未获管理员 `grant` 的账号产生 0 成本。扣费按真实 usage「**发起后按结果扣**」——对话在流 `onEnd` 按累计 token 结算，图片/视频按结果分类（成功/abort/超时照扣，鉴权/参数/限流/**内容审核拒绝**不扣，依百炼「失败不计费」口径），知识库按 embedding tokens。两表 `credits_accounts`（余额，可为负）+ `credit_ledger`（流水），原子扣费防竞态；发放仅经 CLI `scripts/credit-admin.ts`。零新增依赖 / 环境变量。完整计费规则、定价与错误分类见 [docs/credits.md](./docs/credits.md)。
+Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的百炼 API Key（真实费用），故内置 Credits 计费底座：新注册用户默认 **0 分**，各付费入口发起上游调用前 `checkBalance`（余额 ≤0 返回 **402**），未获管理员 `grant` 的账号产生 0 成本。扣费按真实 usage「**发起后按结果扣**」——对话在流 `onEnd` 按累计 token 结算，图片/视频按结果分类（成功/abort/超时照扣，鉴权/参数/限流/**内容审核拒绝**不扣，依百炼「失败不计费」口径），知识库按 embedding tokens。两表 `credits_accounts`（余额，可为负）+ `credit_ledger`（流水），原子扣费防竞态；发放经**用户管理后台** `/dashboard/admin/users`（仅管理员）或 CLI `scripts/credit-admin.ts`（应急后备）。零新增依赖 / 环境变量。完整计费规则、定价与错误分类见 [docs/credits.md](./docs/credits.md)。
+
+### 用户管理后台
+
+平台管理员（`ADMIN_USER_IDS` env 白名单 + 服务端 `isAdmin` 校验）在 `/dashboard/admin/users` 列出全部用户（Clerk Backend API + 合并 Credits 余额）、调整其 Credits（复用 `grantCredits`/`setBalance`）、级联删除账号（Clerk 删号 → 7 表事务清理 → OSS 对象），入口在账号下拉（仅管理员可见）。伴随移除多租户组织功能（工作区 / 团队 / OrgSwitcher）改为单管理员模型。零新增依赖 / 无 DB 迁移。完整鉴权、级联删除与 API 契约见 [docs/user-management.md](./docs/user-management.md)。
 
 ### URL 状态：nuqs
 
@@ -219,20 +223,6 @@ Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的�
 - **Docker**：内置 `Dockerfile`（Node.js）与 `Dockerfile.bun`（Bun），基于 Next.js standalone 输出，镜像更小。
 
 完整说明见 [docs/deployment.md](./docs/deployment.md)。
-
-## Roadmap
-
-- [x] 完整后台骨架：认证 / 多租户 / RBAC / 数据表格 / 表单 / 主题
-- [x] AI Agent 创作模块：对话创作、文生图 / 图生图、资产沉淀，已接入真实后端（PostgreSQL + OSS + Redis + 百炼）
-- [x] 专家模式（技能系统）：会话级选定专家技能（电商套图 / 小红书 / 通用创作），Agent 按其人设与工作流协作
-- [x] 对话内资产引用：`[引用资产]` 机器可读块，让模型确定性地拿到 assetId
-- [x] 资产增强：收藏 / 批量删除 / 直连图片编辑（I2I 不经聊天）
-- [x] 设计画布编辑器：Konva 画布、文字 / 图形 / 图片摆放、导出 PNG、产物沉淀为 `design` 资产
-- [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强；支持上传 PDF/Office/Markdown 文件（`@firecrawl/anydoc` 解析为结构化 Markdown）
-- [x] 总览仪表盘接真实数据：资产统计 / 类型分布 / 30 天趋势 / 最近创作
-- [x] **视频产物**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
-- [x] **Credits 消耗系统**：按 token/张/秒计费，新用户 0 分 + `checkBalance` 402 拦截，管理员 CLI 发放，杜绝陌生人刷爆 API Key → [docs/credits.md](./docs/credits.md)
-- [ ] 按需扩展业务模块
 
 ## 许可证与致谢
 

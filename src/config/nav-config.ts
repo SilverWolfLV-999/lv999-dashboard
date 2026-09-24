@@ -46,21 +46,6 @@ export const navGroups: NavGroup[] = [
         items: []
       },
       {
-        title: '工作区',
-        url: '/dashboard/workspaces',
-        icon: 'workspace',
-        isActive: false,
-        items: []
-      },
-      {
-        title: '团队',
-        url: '/dashboard/workspaces/team',
-        icon: 'teams',
-        isActive: false,
-        items: [],
-        access: { requireOrg: true }
-      },
-      {
         title: 'Agent 创作',
         url: '/dashboard/agent',
         icon: 'sparkles',

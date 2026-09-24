@@ -9,6 +9,7 @@
 
 export type ApiErrorCode =
   | 'unauthorized'
+  | 'forbidden'
   | 'invalid_json'
   | 'invalid_request'
   | 'not_found'

@@ -34,9 +34,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Icons } from '../icons';
-import { OrgSwitcher } from '../org-switcher';
 
-export default function AppSidebar() {
+interface AppSidebarProps {
+  /** 是否平台管理员：由 dashboard/layout.tsx 服务端计算后注入，仅控制「用户管理」入口可见性（UX，非权限依据） */
+  isAdmin?: boolean;
+}
+
+export default function AppSidebar({ isAdmin = false }: AppSidebarProps) {
   const pathname = usePathname();
   const { isOpen } = useMediaQuery();
   const { user } = useUser();
@@ -53,7 +57,22 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible='icon'>
       <SidebarHeader className='group-data-[collapsible=icon]:pt-4'>
-        <OrgSwitcher />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size='lg'
+              render={<Link href='/dashboard/overview' aria-label='LV999 Dashboard' />}
+            >
+              <div className='bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg'>
+                <Icons.logo className='size-4' />
+              </div>
+              <div className='grid flex-1 text-left text-sm leading-tight'>
+                <span className='truncate font-semibold'>LV999 Dashboard</span>
+                <span className='text-muted-foreground truncate text-xs'>管理后台</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className='overflow-x-hidden'>
         {filteredGroups.map((group) => (
@@ -151,6 +170,12 @@ export default function AppSidebar() {
                     <Icons.account className='mr-2 h-4 w-4' />
                     个人资料
                   </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={() => router.push('/dashboard/admin/users')}>
+                      <Icons.teams className='mr-2 h-4 w-4' />
+                      用户管理
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>

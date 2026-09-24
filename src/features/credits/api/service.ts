@@ -24,6 +24,20 @@ export async function getBalance(userId: string): Promise<number> {
   return row?.balance ?? 0;
 }
 
+/**
+ * 批量读余额（管理端用户列表用，避免 N+1）：一次 `where userId in (...)` 查全部账户行。
+ * 返回 userId → balance 映射；无账户行的用户不在 map 内（调用方按 0 处理，与懒创建约定一致）。
+ */
+export async function getBalancesByIds(userIds: string[]): Promise<Map<string, number>> {
+  if (userIds.length === 0) return new Map();
+  const db = getDb();
+  const rows = await db
+    .select({ userId: creditsAccounts.userId, balance: creditsAccounts.balance })
+    .from(creditsAccounts)
+    .where(inArray(creditsAccounts.userId, userIds));
+  return new Map(rows.map((row) => [row.userId, row.balance]));
+}
+
 /** 入口拦截：balance>0 放行（无预扣、无事前估算，见 docs/credits.md §10） */
 export async function checkBalance(userId: string): Promise<boolean> {
   return (await getBalance(userId)) > 0;
