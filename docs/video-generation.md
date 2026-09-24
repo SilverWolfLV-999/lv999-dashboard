@@ -1,4 +1,4 @@
-# 视频产物模块（Phase 3）
+# 视频产物模块
 
 LV999 Dashboard 的动态内容创作能力：在「文本 / 图片 / 设计」之上，新增**视频**作为第 5 类资产（`kind='video'`）。Agent 对话中经 `createVideoAsset`（文生视频 T2V）与 `createVideoFromImageAsset`（图生视频 I2V）产出短视频，统一沉淀为可管理资产。
 

@@ -1,5 +1,5 @@
 /**
- * 视频模型注册表（Phase 3）—— 与 constants/image-models.ts（图片）、constants/models.ts（对话）隔离。
+ * 视频模型注册表 —— 与 constants/image-models.ts（图片）、constants/models.ts（对话）隔离。
  *
  * 视频生成走 AI SDK v7 的 experimental_generateVideo + @ai-sdk/alibaba 的 videoModel()，
  * provider 内部完成「提交异步任务 → 轮询状态 → 下载视频字节」全流程（见 api/video-generation.ts）。

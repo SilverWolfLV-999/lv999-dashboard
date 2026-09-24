@@ -14,7 +14,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **工程模式生产级**：数据层遵循 TanStack Query 官方 SSR 模式，按 feature 组织模块，每个模块的 `api/service.ts` 是接入真实后端时唯一需要替换的文件。
 - **AI Agent 创作模块已落地**：自然语言对话 → 生成 Markdown / HTML / 图片 / 视频作品并沉淀为可管理的资产；已接入真实后端（PostgreSQL + 对象存储 + Redis + 大模型），非 Mock，详见 [docs/agent.md](./docs/agent.md)。
 - **专家模式（技能系统）**：会话级选定一个专家技能（电商套图 / 小红书图文 / 通用创作），Agent 按其人设与工作流持续协作。
-- **视频产物（Phase 3）**：文生视频 / 图生视频（百炼 `wan3.0-video`），视频存 OSS、封面经 OSS 原生截帧，产物沉淀为 `video` 资产，详见 [docs/video-generation.md](./docs/video-generation.md)。
+- **视频产物**：文生视频 / 图生视频（百炼 `wan3.0-video`），视频存 OSS、封面经 OSS 原生截帧，产物沉淀为 `video` 资产，详见 [docs/video-generation.md](./docs/video-generation.md)。
 - **设计画布编辑器**：基于 Konva 的 Canva/Figma 式画布，摆放文字 / 图形 / 图片（可引用 Agent 生成的图片资产），导出 PNG 并沉淀为可重新编辑的 `design` 资产，详见 [docs/design-editor.md](./docs/design-editor.md)。
 - **RAG 知识库**：文本知识切分、向量化存入 pgvector，Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源，详见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
 - **开箱即用**：后台骨架内置 Mock 数据，配好 Clerk 密钥即可跑通；Agent 创作模块另需数据库 / 模型 / 存储 / Redis 配置（见 [docs/agent.md](./docs/agent.md)）。
@@ -189,7 +189,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 文本知识（手动录入 / 从 markdown、html 资产导入 / **上传 PDF·Office·Markdown 文件经 `@firecrawl/anydoc` 解析为结构化 Markdown**）经切分 → 百炼 `text-embedding-v4` 向量化 → 存入 **pgvector**（`knowledge_documents` / `knowledge_chunks` 两表 + HNSW cosine 索引）。Agent 通过 `knowledgeSearch` 工具按语义检索 topK 片段（阈值过滤低相关），仅依据命中片段作答并标注来源；与 `findAssets`（按标题找作品）区分。检索/向量化链路零新增依赖（文件解析另引入 anydoc napi 原生模块）。完整数据模型、摄取管线、文件解析、检索与 API 契约见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
 
-### 视频产物（Phase 3）
+### 视频产物
 
 文生视频 / 图生视频走 AI SDK v7 `experimental_generateVideo` + `@ai-sdk/alibaba` 的 `videoModel()`（默认 `wan3.0-video`，provider 内置异步任务轮询），作为 `kind='video'` 资产落库（`content` 存生成 prompt、`storageKey` 存 OSS `.mp4`），**不新增数据库表**。封面用 OSS 原生视频截帧（`x-oss-process=video/snapshot`）经同源 `/raw?snapshot=1` 代理下发，列表不渲染 `<video>`。零新增依赖 / 环境变量。完整架构、模型注册表、超时链路与封面机制见 [docs/video-generation.md](./docs/video-generation.md)。
 
@@ -230,7 +230,7 @@ Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的�
 - [x] 设计画布编辑器：Konva 画布、文字 / 图形 / 图片摆放、导出 PNG、产物沉淀为 `design` 资产
 - [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强；支持上传 PDF/Office/Markdown 文件（`@firecrawl/anydoc` 解析为结构化 Markdown）
 - [x] 总览仪表盘接真实数据：资产统计 / 类型分布 / 30 天趋势 / 最近创作
-- [x] **视频产物（Phase 3）**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
+- [x] **视频产物**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
 - [x] **Credits 消耗系统**：按 token/张/秒计费，新用户 0 分 + `checkBalance` 402 拦截，管理员 CLI 发放，杜绝陌生人刷爆 API Key → [docs/credits.md](./docs/credits.md)
 - [ ] 按需扩展业务模块
 

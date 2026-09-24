@@ -1,28 +1,28 @@
-# Forms
+# 表单
 
-Forms follow the **official shadcn TanStack Form conventions**, scaled with
-TanStack's own [`createFormHook`](https://tanstack.com/form/latest/docs/framework/react/guides/form-composition)
-pattern: the doc's `Field` anatomy is written **once per widget** as a reusable
-field component, and pages use them as one-liners inside `form.AppField`.
+表单遵循 **shadcn 官方 TanStack Form 规范**，并使用 TanStack 自身的
+[`createFormHook`](https://tanstack.com/form/latest/docs/framework/react/guides/form-composition)
+模式进行扩展：文档中的 `Field` anatomy **每种控件只编写一次**作为可复用的字段组件，
+页面中在 `form.AppField` 内以一行代码即可使用。
 
-- [shadcn: TanStack Form](https://ui.shadcn.com/docs/forms/tanstack) — the
-  anatomy inside every field component
-- [TanStack Form docs](https://tanstack.com/form/latest) — validators,
-  listeners, arrays, async validation
+- [shadcn: TanStack Form](https://ui.shadcn.com/docs/forms/tanstack) —
+  每个字段组件内部的 anatomy 结构
+- [TanStack Form 文档](https://tanstack.com/form/latest) — 验证器、
+  监听器、数组、异步验证
 
-## Architecture
+## 架构
 
-| File | What it provides |
+| 文件 | 提供内容 |
 | --- | --- |
-| `src/lib/form-context.ts` | `createFormHookContexts` — `fieldContext`, `formContext`, `useFieldContext`, `useFieldInvalid`, `BaseFieldProps` |
-| `src/components/forms/fields/*.tsx` | 16 field components, each the exact shadcn doc anatomy for its widget |
-| `src/components/forms/submit-button.tsx` | `SubmitButton` — disables while submitting (`form.Subscribe`) |
-| `src/lib/form.ts` | `createFormHook` — exports `useAppForm` / `withForm` with everything registered |
+| `src/lib/form-context.ts` | `createFormHookContexts` — `fieldContext`、`formContext`、`useFieldContext`、`useFieldInvalid`、`BaseFieldProps` |
+| `src/components/forms/fields/*.tsx` | 16 个字段组件，每个都是对应控件的 shadcn 文档标准 anatomy |
+| `src/components/forms/submit-button.tsx` | `SubmitButton` — 提交中自动禁用（`form.Subscribe`） |
+| `src/lib/form.ts` | `createFormHook` — 导出 `useAppForm` / `withForm`，已注册所有内容 |
 
-## The pattern
+## 使用模式
 
-One `useAppForm` per form, a Zod schema validated on submit, and one
-`form.AppField` per field rendering the matching component:
+每个表单使用一个 `useAppForm`，配合 Zod schema 在提交时验证，每个字段使用一个
+`form.AppField` 渲染对应的组件：
 
 ```tsx
 'use client';
@@ -78,38 +78,38 @@ export function BugReportForm() {
 }
 ```
 
-`form.AppField`'s `name` is fully typed against `defaultValues` — typos are
-compile errors. Field-level validators/listeners go on the `form.AppField`
-element (async checks, `onChangeListenTo` linked fields).
+`form.AppField` 的 `name` 会根据 `defaultValues` 进行完整的类型检查 —
+拼写错误会导致编译报错。字段级的验证器/监听器写在 `form.AppField` 元素上
+（异步检查、`onChangeListenTo` 关联字段）。
 
-## Available field components
+## 可用的字段组件
 
-All render inside `form.AppField` as `field.XxxField`; every one takes
-`label`, `description?`, `required?`.
+所有组件都在 `form.AppField` 内以 `field.XxxField` 的形式渲染；每个组件都接受
+`label`、`description?`、`required?` 属性。
 
-| Component | Value type | Notes |
+| 组件 | 值类型 | 说明 |
 | --- | --- | --- |
-| `TextField` | `string` / `number` | Any input `type` (text, email, password, tel, url, time, number). Number inputs convert at the edge — clearing writes `undefined`. Shows a spinner while async validators run. |
-| `TextareaField` | `string` | `showCount` renders a character counter against `maxLength` |
-| `SelectField` | `string` | `options` array |
-| `CheckboxField` | `boolean` | Single checkbox (terms, consent) |
-| `SwitchField` | `boolean` | Label/description left, switch right |
-| `RadioGroupField` | `string` | `FieldSet` + `FieldLegend` semantics |
-| `SliderField` | `number` | `min`/`max`/`step` + value readout |
-| `ComboboxField` | `string` | Searchable select (Popover + Command) |
-| `DatePickerField` | `Date \| undefined` | Popover + Calendar, `disabledDates` |
-| `DateRangeField` | `DateRange \| undefined` | Two-month range calendar |
-| `OtpField` | `string` | 6-digit code (3 + 3) |
-| `ColorField` | `string` | Native picker + hex input |
-| `FileUploadField` | `File[]` | Wraps `FileUploader`, `maxSize`/`maxFiles` |
-| `CheckboxGroupField` | `string[]` | Needs `mode='array'` on the AppField |
-| `TagsField` | `string[]` | Needs `mode='array'`; Enter/Add pushes, badges remove |
-| `ToggleGroupField` | `string[]` | Needs `mode='array'`; pass `ToggleGroupItem`s as children |
+| `TextField` | `string` / `number` | 支持任意 input `type`（text、email、password、tel、url、time、number）。数字输入在边界处自动转换 — 清空时写入 `undefined`。异步验证器运行时会显示加载指示。 |
+| `TextareaField` | `string` | `showCount` 渲染基于 `maxLength` 的字数统计 |
+| `SelectField` | `string` | `options` 数组 |
+| `CheckboxField` | `boolean` | 单个复选框（条款、同意） |
+| `SwitchField` | `boolean` | 标签/描述在左，开关在右 |
+| `RadioGroupField` | `string` | `FieldSet` + `FieldLegend` 语义 |
+| `SliderField` | `number` | `min`/`max`/`step` + 数值显示 |
+| `ComboboxField` | `string` | 可搜索的下拉选择（Popover + Command） |
+| `DatePickerField` | `Date \| undefined` | Popover + Calendar，支持 `disabledDates` |
+| `DateRangeField` | `DateRange \| undefined` | 双月范围日历 |
+| `OtpField` | `string` | 6 位验证码（3 + 3） |
+| `ColorField` | `string` | 原生取色器 + hex 输入 |
+| `FileUploadField` | `File[]` | 封装 `FileUploader`，支持 `maxSize`/`maxFiles` |
+| `CheckboxGroupField` | `string[]` | 需要在 AppField 上设置 `mode='array'` |
+| `TagsField` | `string[]` | 需要 `mode='array'`；Enter/Add 添加，点击标签删除 |
+| `ToggleGroupField` | `string[]` | 需要 `mode='array'`；将 `ToggleGroupItem` 作为 children 传入 |
 
-## One-off custom fields — drop down to `form.Field`
+## 一次性自定义字段 — 使用 `form.Field` 底层模式
 
-For anything the components don't cover (object-row arrays, bespoke UI), use
-the raw doc pattern directly — it composes freely with the components:
+对于组件未覆盖的场景（对象行数组、定制 UI），直接使用底层文档模式 —
+它可以与现有组件自由组合：
 
 ```tsx
 <form.Field
@@ -142,22 +142,21 @@ the raw doc pattern directly — it composes freely with the components:
 />
 ```
 
-The doc conventions inside any custom field: `data-invalid` on `<Field>`,
-`aria-invalid` on the control, `{isInvalid && <FieldError errors={…} />}`,
-function validators return `{ message: '…' }` objects.
+自定义字段内的文档规范：`<Field>` 上设置 `data-invalid`，
+控件上设置 `aria-invalid`，`{isInvalid && <FieldError errors={…} />}`，
+函数验证器返回 `{ message: '…' }` 对象。
 
-## Scaling to large forms — `withForm` sections
+## 大型表单的拆分 — `withForm` 分区
 
-Split a big form into reusable section components with `withForm` (also
-exported from `@/lib/form`). Sections receive the form instance as a prop and
-keep **fully typed field names** — a typo'd `name` inside a section is still a
-compile error:
+使用 `withForm`（同样从 `@/lib/form` 导出）将大型表单拆分为可复用的分区组件。
+分区通过 props 接收表单实例，并保持 **完全类型安全的字段名** —
+分区内拼写错误的 `name` 仍然会导致编译报错：
 
 ```tsx
 import { useAppForm, withForm } from '@/lib/form';
 
 const ShippingSection = withForm({
-  defaultValues: checkoutDefaults, // ties the section to the form's shape
+  defaultValues: checkoutDefaults, // 将分区绑定到表单结构
   render: function ShippingRender({ form }) {
     return (
       <FieldGroup>
@@ -174,19 +173,18 @@ const ShippingSection = withForm({
   }
 });
 
-// In the page:
+// 在页面中使用：
 const form = useAppForm({ defaultValues: checkoutDefaults, ... });
 <ShippingSection form={form} />
 ```
 
-Deep paths (`org.billing.address.city`), array sub-paths
-(`admins[0].prefs.notify`), and union-typed leaves all stay typed, and
-typechecking stays fast at 40+ fields.
+深层路径（`org.billing.address.city`）、数组子路径（`admins[0].prefs.notify`）、
+以及联合类型的叶子节点都保持类型安全，40+ 字段时类型检查依然很快。
 
-## Template-specific notes
+## 模板特有说明
 
-**Submitting with React Query.** `onSubmit` awaits the mutation; success/error
-handling lives on the mutation:
+**配合 React Query 提交。** `onSubmit` 等待 mutation 完成；成功/错误处理
+在 mutation 上定义：
 
 ```tsx
 onSubmit: async ({ value }) => {
@@ -194,8 +192,8 @@ onSubmit: async ({ value }) => {
 };
 ```
 
-**Sheet / Dialog forms.** The submit button lives in the footer, outside the
-`<form>` element, connected via the HTML `form` attribute:
+**Sheet / Dialog 表单。** 提交按钮位于 footer 中，在 `<form>` 元素外部，
+通过 HTML `form` 属性关联：
 
 ```tsx
 <form id='sheet-form' onSubmit={…}>…</form>
@@ -204,24 +202,22 @@ onSubmit: async ({ value }) => {
 </SheetFooter>
 ```
 
-**Number inputs.** `TextField type='number'` already converts at the edge;
-give required numbers a human message: `z.number({ error: 'Price is required' })`.
+**数字输入。** `TextField type='number'` 已在边界处自动转换；
+必填数字建议使用人性化提示：`z.number({ error: 'Price is required' })`。
 
-**Caveats to know** (verified by stress testing):
+**已知注意事项**（经压力测试验证）：
 
-- `field.XxxField` components assert their value type via
-  `useFieldContext<T>()` — the compiler checks the `name` path exists, but
-  not that the widget matches the path's value type (a `SwitchField` on a
-  string path compiles and renders wrong values). Match widgets to the table
-  above.
-- Rendering a field component outside `form.AppField` throws a clear error
-  (`fieldContext only works when within a fieldComponent…`) — it cannot fail
-  silently.
-- Two forms with identical field names mounted at once (a sheet over a page)
-  produce duplicate `id` attributes — the shadcn doc's `id={field.name}`
-  convention. Form *state* stays fully isolated; only label-target ids
-  collide. Rename fields or avoid simultaneous mounting if labels must stay
-  clickable in both.
-- Forgetting `mode='array'` on an AppField using `CheckboxGroupField` /
-  `TagsField` / `ToggleGroupField` still renders and updates — but keep the
-  convention: array mode gives TanStack correct per-item meta tracking.
+- `field.XxxField` 组件通过 `useFieldContext<T>()` 断言其值类型 —
+  编译器会检查 `name` 路径是否存在，但不会检查控件是否匹配路径的值类型
+  （在 string 路径上使用 `SwitchField` 会编译通过但渲染错误的值）。
+  请对照上方表格匹配合适的控件。
+- 在 `form.AppField` 外部渲染字段组件会抛出明确的错误
+  （`fieldContext only works when within a fieldComponent…`）—
+  不会静默失败。
+- 同时挂载两个具有相同字段名的表单（如 Sheet 覆盖在页面上方）会产生
+  重复的 `id` 属性 — 这是 shadcn 文档中 `id={field.name}` 的命名规范导致的。
+  表单*状态*仍完全隔离；仅 label 目标的 id 会冲突。如果需要两者的标签
+  都可点击，请重命名字段或避免同时挂载。
+- 在使用 `CheckboxGroupField` / `TagsField` / `ToggleGroupField` 的 AppField 上
+  忘记设置 `mode='array'` 仍然可以渲染和更新 — 但请遵循规范：
+  array 模式能让 TanStack 正确追踪每个子项的 meta 状态。

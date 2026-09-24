@@ -1,28 +1,28 @@
-# Deployment
+# 部署
 
-The starter deploys to Vercel out of the box, or anywhere Docker runs. `next.config.ts` sets `output: 'standalone'`, so production builds are optimized for self-hosting.
+本启动套件开箱即用地支持部署到 Vercel，或通过 Docker 部署到任何平台。`next.config.ts` 设置了 `output: 'standalone'`，因此生产构建已针对自托管进行了优化。
 
-## Vercel (Recommended)
+## Vercel（推荐）
 
-1. Connect the repository to Vercel
-2. Add environment variables in the dashboard
-3. Deploy
+1. 将仓库连接到 Vercel
+2. 在 Dashboard 中添加环境变量
+3. 部署
 
-For other platforms, see the [Next.js deployment docs](https://nextjs.org/docs/app/getting-started/deploying).
+如需部署到其他平台，请参见 [Next.js 部署文档](https://nextjs.org/docs/app/getting-started/deploying)。
 
-## Environment Variables for Production
+## 生产环境变量
 
-Ensure these are set in your deployment platform:
+确保在部署平台中设置了以下变量：
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
-- All `NEXT_PUBLIC_*` variables for client-side access
+- 所有用于客户端访问的 `NEXT_PUBLIC_*` 变量
 
 ## Docker
 
-Two production-ready Dockerfiles are included: `Dockerfile` (Node.js) and `Dockerfile.bun` (Bun). Pass `NEXT_PUBLIC_*` variables as `--build-arg` at build time and runtime secrets via `-e` at run time.
+包含两个生产就绪的 Dockerfile：`Dockerfile`（Node.js）和 `Dockerfile.bun`（Bun）。`NEXT_PUBLIC_*` 变量需在构建时通过 `--build-arg` 传入，运行时密钥通过 `-e` 传入。
 
-Build the image:
+构建镜像：
 
 ```bash
 # Node.js
@@ -30,13 +30,13 @@ docker build \
   --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx \
   -t lv999-dashboard .
 
-# OR Bun
+# 或 Bun
 docker build -f Dockerfile.bun \
   --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx \
   -t lv999-dashboard .
 ```
 
-Run the container:
+运行容器：
 
 ```bash
 docker run -d -p 3000:3000 \

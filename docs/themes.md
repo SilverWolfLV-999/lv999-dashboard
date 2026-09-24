@@ -1,43 +1,43 @@
-# Adding New Themes
+# 添加新主题
 
-This guide explains how to add a new theme to the application. The theme system uses CSS custom properties with `[data-theme]` selectors for easy theme switching.
+本指南说明如何为应用添加新主题。主题系统使用 CSS 自定义属性配合 `[data-theme]` 选择器，实现轻松的主题切换。
 
-## The Journey: Adding a New Theme
+## 主题添加流程
 
-When adding a new theme, follow this journey:
+添加新主题时，请按以下流程操作：
 
-1. **Create theme CSS file** → `src/styles/themes/your-theme-name.css` with `[data-theme='your-theme-name']`
-2. **Import theme** → Add `@import` to `src/styles/theme.css`
-3. **Register theme** → Add to `THEMES` array in `src/components/themes/theme.config.ts`
-4. **Add fonts (if needed)** → Import fonts in `src/components/themes/font.config.ts` if using custom Google Fonts
-5. **Set as default (optional)** → Update `DEFAULT_THEME` in `src/components/themes/active-theme.tsx`
+1. **创建主题 CSS 文件** → `src/styles/themes/your-theme-name.css`，使用 `[data-theme='your-theme-name']`
+2. **导入主题** → 在 `src/styles/theme.css` 中添加 `@import`
+3. **注册主题** → 在 `src/components/themes/theme.config.ts` 的 `THEMES` 数组中添加
+4. **添加字体（如需要）** → 如果使用自定义 Google Fonts，在 `src/components/themes/font.config.ts` 中导入
+5. **设为默认（可选）** → 更新 `src/components/themes/active-theme.tsx` 中的 `DEFAULT_THEME`
 
-See the **Step-by-Step Guide** section below for detailed instructions.
+详细步骤请参见下方的**逐步指南**部分。
 
-## Quick Start: Set Your Theme as Default
+## 快速开始：设置默认主题
 
-To make your new theme the default (so it loads automatically without the theme switcher):
+要将新主题设为默认（无需主题切换器即可自动加载）：
 
-1. Open `src/components/themes/active-theme.tsx`
-2. Change line 12: `const DEFAULT_THEME = 'your-theme-name';`
-3. Save and restart your dev server
+1. 打开 `src/components/themes/active-theme.tsx`
+2. 修改第 12 行：`const DEFAULT_THEME = 'your-theme-name';`
+3. 保存并重启开发服务器
 
-That's it! Your theme will now be the default for all new users.
+就是这样！你的主题现在将成为所有新用户的默认主题。
 
-> **Note:** Make sure you've completed steps 1-3 above before setting a theme as default.
+> **注意：** 在设置默认主题之前，请确保已完成上方步骤 1-3。
 
-## Theme Structure
+## 主题结构
 
-All themes are located in `src/styles/themes/` directory. Each theme is a complete, self-contained CSS file that defines all design tokens for both light and dark modes.
+所有主题位于 `src/styles/themes/` 目录中。每个主题都是一个完整的、自包含的 CSS 文件，为亮色和暗色模式定义所有设计令牌。
 
-## File Format
+## 文件格式
 
-Each theme file must follow this structure:
+每个主题文件必须遵循以下结构：
 
 ```css
-/* Light mode tokens */
+/* 亮色模式令牌 */
 [data-theme='your-theme-name'] {
-  /* Color tokens */
+  /* 颜色令牌 */
   --background: oklch(...);
   --foreground: oklch(...);
   --card: oklch(...);
@@ -58,14 +58,14 @@ Each theme file must follow this structure:
   --input: oklch(...);
   --ring: oklch(...);
 
-  /* Chart colors */
+  /* 图表颜色 */
   --chart-1: oklch(...);
   --chart-2: oklch(...);
   --chart-3: oklch(...);
   --chart-4: oklch(...);
   --chart-5: oklch(...);
 
-  /* Sidebar colors */
+  /* 侧边栏颜色 */
   --sidebar: oklch(...);
   --sidebar-foreground: oklch(...);
   --sidebar-primary: oklch(...);
@@ -75,20 +75,20 @@ Each theme file must follow this structure:
   --sidebar-border: oklch(...);
   --sidebar-ring: oklch(...);
 
-  /* Typography */
-  /* Option 1: Use fonts from next/font/google (recommended) */
-  --font-sans: 'Font Name', sans-serif; /* Use the font's display name */
+  /* 排版 */
+  /* 方式一：使用 next/font/google 的字体（推荐） */
+  --font-sans: 'Font Name', sans-serif; /* 使用字体的显示名称 */
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: 'Mono Font Name', monospace;
 
-  /* Option 2: Use system fonts */
+  /* 方式二：使用系统字体 */
   /* --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif; */
 
-  /* Spacing & Layout */
+  /* 间距与布局 */
   --radius: 0.5rem;
   --spacing: 0.25rem;
 
-  /* Shadows (optional) */
+  /* 阴影（可选） */
   --shadow-x: 0px;
   --shadow-y: 1px;
   --shadow-blur: 3px;
@@ -104,22 +104,22 @@ Each theme file must follow this structure:
   --shadow-xl: 0px 1px 3px 0px hsl(0 0% 0% / 0.17), 0px 8px 10px -1px hsl(0 0% 0% / 0.17);
   --shadow-2xl: 0px 1px 3px 0px hsl(0 0% 0% / 0.43);
 
-  /* Letter spacing (optional) */
+  /* 字母间距（可选） */
   --tracking-normal: 0em;
 }
 
-/* Dark mode tokens */
+/* 暗色模式令牌 */
 [data-theme='your-theme-name'].dark {
-  /* Same tokens as above, but with dark mode values */
+  /* 与上方相同的令牌，使用暗色模式的值 */
   --background: oklch(...);
   --foreground: oklch(...);
-  /* ... all other tokens with dark mode values */
+  /* ... 所有其他令牌使用暗色模式的值 */
 }
 
-/* Theme inline mappings */
+/* 主题内联映射 */
 [data-theme='your-theme-name'] {
   @theme inline {
-    /* Color mappings */
+    /* 颜色映射 */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -153,18 +153,18 @@ Each theme file must follow this structure:
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
 
-    /* Font mappings */
+    /* 字体映射 */
     --font-sans: var(--font-sans);
     --font-mono: var(--font-mono);
     --font-serif: var(--font-serif);
 
-    /* Radius variants */
+    /* 圆角变体 */
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
     --radius-xl: calc(var(--radius) + 4px);
 
-    /* Shadow mappings (if shadows are defined) */
+    /* 阴影映射（如果定义了阴影） */
     --shadow-2xs: var(--shadow-2xs);
     --shadow-xs: var(--shadow-xs);
     --shadow-sm: var(--shadow-sm);
@@ -174,7 +174,7 @@ Each theme file must follow this structure:
     --shadow-xl: var(--shadow-xl);
     --shadow-2xl: var(--shadow-2xl);
 
-    /* Tracking variants (if tracking-normal is defined) */
+    /* 字距变体（如果定义了 tracking-normal） */
     --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
     --tracking-tight: calc(var(--tracking-normal) - 0.025em);
     --tracking-normal: var(--tracking-normal);
@@ -185,343 +185,343 @@ Each theme file must follow this structure:
 }
 ```
 
-## Step-by-Step Guide: Adding a New Theme
+## 逐步指南：添加新主题
 
-Follow these steps in order to add a new theme to your application.
+按以下顺序操作来为应用添加新主题。
 
-### Step 1: Create Theme CSS File
+### 步骤 1：创建主题 CSS 文件
 
-Create a new file in `src/styles/themes/` with a descriptive name (use kebab-case):
+在 `src/styles/themes/` 中创建一个描述性命名的文件（使用 kebab-case）：
 
 ```bash
 src/styles/themes/your-theme-name.css
 ```
 
-**Important:** The filename should match the `data-theme` attribute value you'll use in the CSS.
+**重要：** 文件名应与你将在 CSS 中使用的 `data-theme` 属性值匹配。
 
-### Step 2: Define Your Theme with `[data-theme]` Attribute
+### 步骤 2：使用 `[data-theme]` 属性定义主题
 
-Copy the structure from the "File Format" section above and fill in your color values. Use OKLCH color format for better color consistency:
+复制上方"文件格式"部分的结构，填入你的颜色值。使用 OKLCH 颜色格式以获得更好的颜色一致性：
 
 ```css
-/* Light mode tokens */
+/* 亮色模式令牌 */
 [data-theme='your-theme-name'] {
-  --background: oklch(1 0 0); /* White */
-  --foreground: oklch(0.145 0 0); /* Dark gray */
+  --background: oklch(1 0 0); /* 白色 */
+  --foreground: oklch(0.145 0 0); /* 深灰色 */
   --card: oklch(...);
-  /* ... all other tokens */
+  /* ... 所有其他令牌 */
 }
 
-/* Dark mode tokens */
+/* 暗色模式令牌 */
 [data-theme='your-theme-name'].dark {
-  --background: oklch(0.145 0 0); /* Dark */
-  --foreground: oklch(0.985 0 0); /* Light */
-  /* ... all other tokens with dark mode values */
+  --background: oklch(0.145 0 0); /* 深色 */
+  --foreground: oklch(0.985 0 0); /* 亮色 */
+  /* ... 所有其他令牌使用暗色模式的值 */
 }
 
-/* Theme inline mappings for Tailwind */
+/* Tailwind 主题内联映射 */
 [data-theme='your-theme-name'] {
   @theme inline {
-    /* All the mappings as shown in the File Format section */
+    /* 所有映射如"文件格式"部分所示 */
   }
 }
 ```
 
-**Color Format:**
+**颜色格式：**
 
-- Use `oklch()` format: `oklch(lightness chroma hue)`
-- Example: `oklch(0.852 0.199 91.936)` = light green-blue
-- Lightness: 0-1 (0 = black, 1 = white)
-- Chroma: 0+ (0 = grayscale, higher = more saturated)
-- Hue: 0-360 (color wheel position)
+- 使用 `oklch()` 格式：`oklch(亮度 色度 色相)`
+- 示例：`oklch(0.852 0.199 91.936)` = 浅青绿色
+- 亮度：0-1（0 = 黑色，1 = 白色）
+- 色度：0+（0 = 灰度，越高越饱和）
+- 色相：0-360（色轮位置）
 
-**Key Points:**
+**要点：**
 
-- The `[data-theme='your-theme-name']` selector is what makes your theme work
-- The value `'your-theme-name'` must match exactly in all places (CSS file, config, etc.)
-- Always include both light and dark mode variants
-- Include the `@theme inline` block for Tailwind CSS integration
+- `[data-theme='your-theme-name']` 选择器是主题生效的关键
+- 值 `'your-theme-name'` 必须在所有位置（CSS 文件、配置等）完全匹配
+- 始终同时包含亮色和暗色模式变体
+- 包含 `@theme inline` 块以集成 Tailwind CSS
 
-### Step 3: Import Theme in theme.css
+### 步骤 3：在 theme.css 中导入主题
 
-Add your theme import to `src/styles/theme.css`:
+在 `src/styles/theme.css` 中添加主题导入：
 
 ```css
 @import './themes/your-theme-name.css';
 ```
 
-This makes your theme available to the application.
+这使得主题对应用可用。
 
-### Step 4: Add Theme to theme.config.ts
+### 步骤 4：在 theme.config.ts 中添加主题
 
-Add your theme to the `THEMES` array in `src/components/themes/theme.config.ts`:
+在 `src/components/themes/theme.config.ts` 的 `THEMES` 数组中添加主题：
 
 ```typescript
 export const THEMES = [
-  // ... existing themes
+  // ... 现有主题
   {
-    name: 'Your Theme Name', // Display name in the UI
-    value: 'your-theme-name' // Must match [data-theme] value exactly
+    name: 'Your Theme Name', // UI 中显示的名称
+    value: 'your-theme-name' // 必须与 [data-theme] 值完全匹配
   }
 ];
 ```
 
-**Important:** The `value` field must match the `data-theme` attribute value from your CSS file exactly.
+**重要：** `value` 字段必须与 CSS 文件中的 `data-theme` 属性值完全匹配。
 
-### Step 5: Add Custom Fonts (If Needed)
+### 步骤 5：添加自定义字体（如需要）
 
-**Only do this step if your theme requires a custom Google Font that isn't already loaded.**
+**仅当你的主题需要尚未加载的自定义 Google Font 时才执行此步骤。**
 
-If you want to use a Google Font in your theme:
+如果你想在主题中使用 Google Font：
 
-**File:** `src/components/themes/font.config.ts`
+**文件：** `src/components/themes/font.config.ts`
 
-1. **Import the font** from `next/font/google`:
+1. **导入字体**，从 `next/font/google`：
 
 ```typescript
 import { Your_Font_Name } from 'next/font/google';
 ```
 
-2. **Configure the font** with a CSS variable:
+2. **配置字体**，设置 CSS 变量：
 
 ```typescript
 const fontYourName = Your_Font_Name({
   subsets: ['latin'],
-  weight: ['400', '500', '700'], // Adjust weights as needed
-  variable: '--font-your-name' // Optional: custom variable name
+  weight: ['400', '500', '700'], // 按需调整字重
+  variable: '--font-your-name' // 可选：自定义变量名
 });
 ```
 
-3. **Add it to the `fontVariables` export**:
+3. **添加到 `fontVariables` 导出中**：
 
 ```typescript
 export const fontVariables = cn(
-  // ... existing fonts
+  // ... 现有字体
   fontYourName.variable
 );
 ```
 
-4. **Use the font in your theme CSS** by its display name (not the CSS variable):
+4. **在主题 CSS 中通过显示名称使用字体**（不是 CSS 变量名）：
 
 ```css
 [data-theme='your-theme-name'] {
-  --font-sans: 'Your Font Name', sans-serif; /* Use the actual font name */
+  --font-sans: 'Your Font Name', sans-serif; /* 使用实际字体名称 */
   --font-mono: 'Your Mono Font', monospace;
 }
 ```
 
-**Important Notes:**
+**重要说明：**
 
-- Use the font's **display name** in CSS (e.g., `'Geist'`, `'Architects Daughter'`), not the CSS variable
-- The font must be imported in `font.config.ts` for it to be loaded by Next.js
-- Font variables from `font.config.ts` are automatically applied to the body via `layout.tsx`
-- You can use any Google Font available in `next/font/google`
-- Check existing fonts in `font.config.ts` before adding new ones - you might be able to reuse them
+- 在 CSS 中使用字体的**显示名称**（如 `'Geist'`、`'Architects Daughter'`），不是 CSS 变量
+- 字体必须在 `font.config.ts` 中导入，Next.js 才会加载它
+- `font.config.ts` 中的字体变量会通过 `layout.tsx` 自动应用到 body
+- 可以使用 `next/font/google` 中的任何 Google Font
+- 添加新字体前先检查 `font.config.ts` 中已有的字体 — 可能可以直接复用
 
-**Example:** The `notebook` theme uses `Architects Daughter`:
+**示例：** `notebook` 主题使用了 `Architects Daughter`：
 
-- Imported in `font.config.ts` as `Architects_Daughter`
-- Used in `notebook.css` as `'Architects Daughter'` (with quotes and space)
+- 在 `font.config.ts` 中以 `Architects_Daughter` 导入
+- 在 `notebook.css` 中以 `'Architects Daughter'` 使用（带引号和空格）
 
-### Step 6: Set as Default Theme (Optional)
+### 步骤 6：设为默认主题（可选）
 
-If you want your theme to be the default theme that loads when users first visit the application (without needing the theme switcher), update the default theme constant:
+如果你希望主题在用户首次访问应用时自动加载（无需使用主题切换器），更新默认主题常量：
 
-**File:** `src/components/themes/theme.config.ts`
+**文件：** `src/components/themes/theme.config.ts`
 
 ```typescript
 /**
- * Default theme that loads when no user preference is set
- * Change this value to set a different default theme
+ * 未设置用户偏好时加载的默认主题
+ * 修改此值以设置不同的默认主题
  */
-export const DEFAULT_THEME = 'your-theme-name'; // Change from 'vercel' to your theme name
+export const DEFAULT_THEME = 'your-theme-name'; // 从 'vercel' 改为你的主题名
 ```
 
-**Note:**
+**注意：**
 
-- This is the **single source of truth** for the default theme - it's automatically used in both server-side rendering and client-side code
-- This will make your theme the default for all new users
-- Existing users who have already selected a theme will still see their saved preference (stored in cookies)
-- The default theme is applied immediately on page load (no flash of unstyled content)
+- 这是默认主题的**唯一真实来源** — 服务端渲染和客户端代码都会自动使用它
+- 这会使你的主题成为所有新用户的默认主题
+- 已选择过主题的现有用户仍会看到其保存的偏好（存储在 cookie 中）
+- 默认主题在页面加载时立即应用（无未样式内容闪烁）
 
-### Step 7: Test Your Theme
+### 步骤 7：测试你的主题
 
-1. Start your development server
-2. Open the theme selector in the UI
-3. Select your new theme
-4. Verify it works in both light and dark modes
-5. Test scaled variant by selecting "Your Theme Name (Scaled)"
-6. If you set it as default, clear your browser cookies and refresh to see it load automatically
+1. 启动开发服务器
+2. 打开 UI 中的主题选择器
+3. 选择你的新主题
+4. 验证亮色和暗色模式都正常工作
+5. 选择 "Your Theme Name (Scaled)" 测试缩放变体
+6. 如果设为默认主题，清除浏览器 cookie 并刷新以查看自动加载效果
 
-## Quick Reference: File Locations
+## 快速参考：文件位置
 
-When adding a new theme, you'll work with these files in this order:
+添加新主题时，按以下顺序操作这些文件：
 
-1. ✅ `src/styles/themes/your-theme-name.css` - Create theme file with `[data-theme]` attribute
-2. ✅ `src/styles/theme.css` - Import your theme file
-3. ✅ `src/components/themes/theme.config.ts` - Add theme to `THEMES` array
-4. ⚠️ `src/components/themes/font.config.ts` - Add fonts only if needed
-5. ⚠️ `src/components/themes/active-theme.tsx` - Set as default only if desired
+1. ✅ `src/styles/themes/your-theme-name.css` — 创建主题文件，使用 `[data-theme]` 属性
+2. ✅ `src/styles/theme.css` — 导入主题文件
+3. ✅ `src/components/themes/theme.config.ts` — 在 `THEMES` 数组中添加主题
+4. ⚠️ `src/components/themes/font.config.ts` — 仅在需要时添加字体
+5. ⚠️ `src/components/themes/active-theme.tsx` — 仅在需要时设为默认
 
-## Required Tokens
+## 必需令牌
 
-### Minimum Required
+### 最低要求
 
-At minimum, your theme should define these tokens:
+你的主题至少应定义以下令牌：
 
 - `--background`
 - `--foreground`
-- `--card` & `--card-foreground`
-- `--popover` & `--popover-foreground`
-- `--primary` & `--primary-foreground`
-- `--secondary` & `--secondary-foreground`
-- `--muted` & `--muted-foreground`
-- `--accent` & `--accent-foreground`
-- `--destructive` & `--destructive-foreground`
+- `--card` 和 `--card-foreground`
+- `--popover` 和 `--popover-foreground`
+- `--primary` 和 `--primary-foreground`
+- `--secondary` 和 `--secondary-foreground`
+- `--muted` 和 `--muted-foreground`
+- `--accent` 和 `--accent-foreground`
+- `--destructive` 和 `--destructive-foreground`
 - `--border`
 - `--input`
 - `--ring`
 - `--radius`
 
-### Optional Tokens
+### 可选令牌
 
-These can be omitted if not needed:
+不需要时可以省略：
 
-- `--chart-1` through `--chart-5` (defaults to primary colors)
-- `--sidebar-*` tokens (defaults to card colors)
-- `--font-*` tokens (uses system defaults)
-- `--shadow-*` tokens (no shadows if omitted)
-- `--tracking-normal` (no letter spacing if omitted)
-- `--spacing` (uses default)
+- `--chart-1` 到 `--chart-5`（默认使用主题色）
+- `--sidebar-*` 令牌（默认使用卡片颜色）
+- `--font-*` 令牌（使用系统默认）
+- `--shadow-*` 令牌（省略则无阴影）
+- `--tracking-normal`（省略则无字母间距）
+- `--spacing`（使用默认值）
 
-## Example: Complete Theme
+## 示例：完整主题
 
-See `src/styles/themes/claude.css` for a complete example with all tokens defined.
+完整示例请参见 `src/styles/themes/claude.css`，其中定义了所有令牌。
 
-## Example: Minimal Theme
+## 示例：最小主题
 
-For a minimal theme, you can copy an existing theme and modify only the colors you want to change. The system will fall back to defaults for any missing tokens.
+对于最小主题，你可以复制一个现有主题，仅修改你想更改的颜色。系统会为任何缺失的令牌回退到默认值。
 
-## Color Format Reference
+## 颜色格式参考
 
-### OKLCH Format
+### OKLCH 格式
 
 ```
-oklch(lightness chroma hue)
+oklch(亮度 色度 色相)
 ```
 
-- **Lightness**: 0-1 (0 = black, 1 = white)
-- **Chroma**: 0+ (0 = grayscale, 0.2+ = colorful)
-- **Hue**: 0-360 degrees
-  - 0/360 = Red
-  - 60 = Yellow
-  - 120 = Green
-  - 180 = Cyan
-  - 240 = Blue
-  - 300 = Magenta
+- **亮度**：0-1（0 = 黑色，1 = 白色）
+- **色度**：0+（0 = 灰度，0.2+ = 彩色）
+- **色相**：0-360 度
+  - 0/360 = 红色
+  - 60 = 黄色
+  - 120 = 绿色
+  - 180 = 青色
+  - 240 = 蓝色
+  - 300 = 品红色
 
-### Examples
+### 示例
 
 ```css
-/* Pure white */
+/* 纯白 */
 --background: oklch(1 0 0);
 
-/* Pure black */
+/* 纯黑 */
 --foreground: oklch(0 0 0);
 
-/* Bright blue */
+/* 亮蓝 */
 --primary: oklch(0.7 0.2 240);
 
-/* Muted gray */
+/* 灰色 */
 --muted: oklch(0.5 0 0);
 ```
 
-## Scaled Variants
+## 缩放变体
 
-All themes automatically support scaled variants. When a user selects "Theme Name (Scaled)", the `.theme-scaled` class is applied, which adjusts spacing and text sizes. No additional CSS is needed in your theme file.
+所有主题自动支持缩放变体。当用户选择 "Theme Name (Scaled)" 时，会应用 `.theme-scaled` 类，调整间距和文字大小。你的主题文件中无需额外 CSS。
 
-## Best Practices
+## 最佳实践
 
-1. **Use descriptive theme names**: Use kebab-case (e.g., `ocean-blue`, `forest-green`)
-2. **Provide both light and dark modes**: Always define both variants
-3. **Test accessibility**: Ensure sufficient contrast between foreground and background
-4. **Keep tokens consistent**: Use similar lightness/chroma values for related colors
-5. **Document special features**: If your theme has unique characteristics (like no shadows or custom fonts), add comments
+1. **使用描述性主题名**：使用 kebab-case（如 `ocean-blue`、`forest-green`）
+2. **同时提供亮色和暗色模式**：始终定义两种变体
+3. **测试可访问性**：确保前景色和背景色之间有足够的对比度
+4. **保持令牌一致性**：相关颜色使用相似的亮度/色度值
+5. **记录特殊功能**：如果主题有独特特征（如无阴影或自定义字体），添加注释说明
 
-## Troubleshooting
+## 故障排查
 
-### Theme Not Appearing
+### 主题不显示
 
-- Check that the file is imported in `src/styles/theme.css`
-- Verify the theme name matches in both CSS file and theme-selector.tsx
-- Ensure the file is saved and the dev server has reloaded
+- 检查文件是否在 `src/styles/theme.css` 中导入
+- 验证主题名称在 CSS 文件和 theme-selector.tsx 中一致
+- 确保文件已保存且开发服务器已重新加载
 
-### Colors Not Applying
+### 颜色不生效
 
-- Verify all required tokens are defined
-- Check that `@theme inline` block includes all color mappings
-- Ensure OKLCH format is correct (no typos)
+- 验证所有必需令牌已定义
+- 检查 `@theme inline` 块是否包含所有颜色映射
+- 确保 OKLCH 格式正确（无拼写错误）
 
-### Dark Mode Not Working
+### 暗色模式不工作
 
-- Verify `.dark` selector is correct: `[data-theme='name'].dark`
-- Check that dark mode tokens are defined
-- Ensure `next-themes` is properly configured
+- 验证 `.dark` 选择器正确：`[data-theme='name'].dark`
+- 检查暗色模式令牌是否已定义
+- 确保 `next-themes` 配置正确
 
-## Setting a Default Theme
+## 设置默认主题
 
-By default, the application uses the `vercel` theme. To change the default theme that loads for new users:
+应用默认使用 `vercel` 主题。要更改新用户的默认主题：
 
-### Change Default Theme Constant
+### 修改默认主题常量
 
-Edit `src/components/themes/theme.config.ts` and update the `DEFAULT_THEME` constant:
+编辑 `src/components/themes/theme.config.ts` 并更新 `DEFAULT_THEME` 常量：
 
 ```typescript
 /**
- * Default theme that loads when no user preference is set
- * Change this value to set a different default theme
+ * 未设置用户偏好时加载的默认主题
+ * 修改此值以设置不同的默认主题
  */
-export const DEFAULT_THEME = 'your-theme-name'; // Change this value
+export const DEFAULT_THEME = 'your-theme-name'; // 修改此值
 ```
 
-**How it works:**
+**工作原理：**
 
-- **Single source of truth**: `DEFAULT_THEME` is defined in `theme.config.ts` and imported everywhere it's needed
-- **Server-side**: Applied immediately in the HTML `data-theme` attribute (no flash)
-- **Client-side**: Used as fallback when no cookie preference exists
-- **User preferences**: Still respects saved user preferences (stored in cookies)
-- **Automatic**: No need to update multiple files - change it once and it works everywhere
+- **唯一真实来源**：`DEFAULT_THEME` 定义在 `theme.config.ts` 中，在所有需要的地方导入
+- **服务端**：立即应用在 HTML 的 `data-theme` 属性中（无闪烁）
+- **客户端**：作为无 cookie 偏好时的回退值
+- **用户偏好**：仍然尊重已保存的用户偏好（存储在 cookie 中）
+- **自动化**：无需更新多个文件 — 修改一次即可全局生效
 
-**Benefits of this approach:**
+**此方式的优势：**
 
-✅ No code duplication - defined once, used everywhere  
-✅ Type-safe - TypeScript ensures consistency  
-✅ Easy to change - update one line in one file  
-✅ Well-documented - clear comments explain its purpose  
-✅ Immediate application - no flash of unstyled content
+✅ 无代码重复 — 定义一次，处处使用
+✅ 类型安全 — TypeScript 确保一致性
+✅ 易于修改 — 在一个文件中改一行
+✅ 文档清晰 — 注释说明用途
+✅ 即时应用 — 无未样式内容闪烁
 
-## Using Google Fonts in Themes
+## 在主题中使用 Google Fonts
 
-> **Note:** This section provides additional details about fonts. For the complete step-by-step process, see **Step 5** in the "Step-by-Step Guide" above.
+> **注意：** 本节提供字体的额外细节。完整的分步流程请参见上方**逐步指南**中的**步骤 5**。
 
-### When to Add Fonts
+### 何时需要添加字体
 
-You only need to add fonts to `font.config.ts` if:
+仅在以下情况需要在 `font.config.ts` 中添加字体：
 
-- Your theme uses a Google Font that isn't already imported
-- You want to use a custom font that requires loading
+- 你的主题使用了尚未导入的 Google Font
+- 你想使用需要加载的自定义字体
 
-**Tip:** Check `src/components/themes/font.config.ts` first - many fonts may already be available!
+**提示：** 先检查 `src/components/themes/font.config.ts` — 许多字体可能已经可用！
 
-### Font Loading Process
+### 字体加载流程
 
-1. **Import the font** in `src/components/themes/font.config.ts`:
+1. 在 `src/components/themes/font.config.ts` 中**导入字体**：
 
 ```typescript
 import { Roboto, Roboto_Mono } from 'next/font/google';
 ```
 
-2. **Configure the font** with a CSS variable:
+2. **配置字体**，设置 CSS 变量：
 
 ```typescript
 const fontRoboto = Roboto({
@@ -531,36 +531,36 @@ const fontRoboto = Roboto({
 });
 ```
 
-3. **Add to fontVariables export**:
+3. **添加到 fontVariables 导出**：
 
 ```typescript
 export const fontVariables = cn(
-  // ... existing fonts
+  // ... 现有字体
   fontRoboto.variable
 );
 ```
 
-4. **Use in your theme CSS** with the font's display name:
+4. **在主题 CSS 中使用字体显示名称**：
 
 ```css
 [data-theme='your-theme'] {
-  --font-sans: 'Roboto', sans-serif; /* Use display name, not CSS variable */
+  --font-sans: 'Roboto', sans-serif; /* 使用显示名称，不是 CSS 变量 */
   --font-mono: 'Roboto Mono', monospace;
 }
 ```
 
-### Important Notes
+### 重要说明
 
-- **Font names**: Use the font's display name in CSS (e.g., `'Roboto'`, `'Open Sans'`), not the CSS variable name
-- **Font loading**: Fonts must be imported in `font.config.ts` to be loaded by Next.js
-- **Automatic application**: Font variables are automatically applied to the body element via `layout.tsx`
-- **Available fonts**: Check [Next.js Font Optimization](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) for available Google Fonts
+- **字体名称**：在 CSS 中使用字体的显示名称（如 `'Roboto'`、`'Open Sans'`），不是 CSS 变量名
+- **字体加载**：字体必须在 `font.config.ts` 中导入，Next.js 才会加载
+- **自动应用**：字体变量通过 `layout.tsx` 自动应用到 body 元素
+- **可用字体**：参见 [Next.js 字体优化文档](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) 了解可用的 Google Fonts
 
-### Example: Notebook Theme
+### 示例：Notebook 主题
 
-The `notebook` theme uses `Architects Daughter`:
+`notebook` 主题使用了 `Architects Daughter`：
 
-**In `font.config.ts`:**
+**在 `font.config.ts` 中：**
 
 ```typescript
 import { Architects_Daughter } from 'next/font/google';
@@ -572,12 +572,12 @@ const fontArchitectsDaughter = Architects_Daughter({
 });
 
 export const fontVariables = cn(
-  // ... other fonts
+  // ... 其他字体
   fontArchitectsDaughter.variable
 );
 ```
 
-**In `notebook.css`:**
+**在 `notebook.css` 中：**
 
 ```css
 [data-theme='notebook'] {
@@ -585,11 +585,11 @@ export const fontVariables = cn(
 }
 ```
 
-## Reference Files
+## 参考文件
 
-- **Complete theme example**: `src/styles/themes/claude.css`
-- **Theme aggregator**: `src/styles/theme.css`
-- **Theme selector component**: `src/components/themes/theme-selector.tsx`
-- **Theme provider**: `src/components/themes/active-theme.tsx`
-- **Theme configuration** (includes default theme): `src/components/themes/theme.config.ts`
-- **Font configuration**: `src/components/themes/font.config.ts`
+- **完整主题示例**：`src/styles/themes/claude.css`
+- **主题聚合器**：`src/styles/theme.css`
+- **主题选择器组件**：`src/components/themes/theme-selector.tsx`
+- **主题提供者**：`src/components/themes/active-theme.tsx`
+- **主题配置**（含默认主题）：`src/components/themes/theme.config.ts`
+- **字体配置**：`src/components/themes/font.config.ts`
