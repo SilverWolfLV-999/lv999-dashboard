@@ -29,6 +29,7 @@ import { navGroups } from '@/config/nav-config';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useClerk, useUser } from '@clerk/nextjs';
 import { useFilteredNavGroups } from '@/hooks/use-nav';
+import { SidebarCreditsItem } from '@/features/credits/components/sidebar-credits-item';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
@@ -42,6 +43,8 @@ export default function AppSidebar() {
   const { signOut } = useClerk();
   const router = useRouter();
   const filteredGroups = useFilteredNavGroups(navGroups);
+  // 账号下拉受控 open：打开时才查 Credits 余额（不常驻轮询）
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
 
   React.useEffect(() => {
     // Side effects based on sidebar state changes
@@ -113,7 +116,7 @@ export default function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
+            <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
               <DropdownMenuTrigger
                 render={
                   <SidebarMenuButton
@@ -143,6 +146,7 @@ export default function AppSidebar() {
                 <DropdownMenuSeparator />
 
                 <DropdownMenuGroup>
+                  <SidebarCreditsItem enabled={userMenuOpen} />
                   <DropdownMenuItem onClick={() => router.push('/dashboard/profile')}>
                     <Icons.account className='mr-2 h-4 w-4' />
                     个人资料

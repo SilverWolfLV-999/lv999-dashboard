@@ -28,6 +28,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；支持**上传 PDF / Word / PPT / Excel / Markdown 等文件**（`@firecrawl/anydoc` 解析为结构化 Markdown）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
 - **我的资产**：Agent 与设计画布的产出统一沉淀为可管理资产（markdown / html / image / design / video 五类）；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除 / **收藏** / **批量删除**，图片 / 视频经 OSS 签名 URL 访问（视频列表显示 OSS 截帧封面）
 - **直连图片编辑**：图片资产行操作「继续修改」直连 I2I（不经聊天），产出派生资产并记录血缘
+- **成本管控（Credits）**：对话 / 生图 / 生视频 / 知识库摄取按 Credits 扣费；新用户默认 **0 分**、余额不足即 402 拒绝，杜绝陌生人刷爆作者 API Key；管理员经 CLI 发放额度，账号下拉见余额、`/dashboard/profile/credits` 看流水
 - **总览仪表盘**：统计卡片 + Recharts 图表；基于并行路由（Parallel Routes），每个区块拥有独立的加载与错误状态；**已接真实数据**（资产统计 / 类型分布 / 30 天趋势 / 最近创作）
 - **数据表格**：服务端预取 + 客户端查询缓存 + 水合（HydrationBoundary），搜索 / 筛选 / 排序 / 分页与 URL 同步（nuqs），`shallow: true` 让交互零 RSC 往返
 - **表单体系**：TanStack Form + Zod；可复用字段组件、多步表单、对话框 / 抽屉表单，提交后自动失效相关查询缓存
@@ -192,6 +193,10 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 文生视频 / 图生视频走 AI SDK v7 `experimental_generateVideo` + `@ai-sdk/alibaba` 的 `videoModel()`（默认 `wan3.0-video`，provider 内置异步任务轮询），作为 `kind='video'` 资产落库（`content` 存生成 prompt、`storageKey` 存 OSS `.mp4`），**不新增数据库表**。封面用 OSS 原生视频截帧（`x-oss-process=video/snapshot`）经同源 `/raw?snapshot=1` 代理下发，列表不渲染 `<video>`。零新增依赖 / 环境变量。完整架构、模型注册表、超时链路与封面机制见 [docs/video-generation.md](./docs/video-generation.md)。
 
+### Credits 成本管控
+
+Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的百炼 API Key（真实费用），故内置 Credits 计费底座：新注册用户默认 **0 分**，各付费入口发起上游调用前 `checkBalance`（余额 ≤0 返回 **402**），未获管理员 `grant` 的账号产生 0 成本。扣费按真实 usage「**发起后按结果扣**」——对话在流 `onEnd` 按累计 token 结算，图片/视频按结果分类（成功/abort/超时照扣，鉴权/参数/限流/**内容审核拒绝**不扣，依百炼「失败不计费」口径），知识库按 embedding tokens。两表 `credits_accounts`（余额，可为负）+ `credit_ledger`（流水），原子扣费防竞态；发放仅经 CLI `scripts/credit-admin.ts`。零新增依赖 / 环境变量。完整计费规则、定价与错误分类见 [docs/credits.md](./docs/credits.md)。
+
 ### URL 状态：nuqs
 
 服务端用 `searchParamsCache` 读取，客户端用 `useQueryState(shallow: true)` 写入；表格的分页 / 筛选不触发 RSC 往返，刷新或分享链接也能还原视图。
@@ -226,6 +231,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 - [x] RAG 知识库：pgvector + 百炼 embedding，`knowledgeSearch` 工具接入 Agent 对话检索增强；支持上传 PDF/Office/Markdown 文件（`@firecrawl/anydoc` 解析为结构化 Markdown）
 - [x] 总览仪表盘接真实数据：资产统计 / 类型分布 / 30 天趋势 / 最近创作
 - [x] **视频产物（Phase 3）**：文生视频 / 图生视频（百炼 `wan3.0-video`），OSS 存储 + 原生截帧封面，沉淀为 `video` 资产 → [docs/video-generation.md](./docs/video-generation.md)
+- [x] **Credits 消耗系统**：按 token/张/秒计费，新用户 0 分 + `checkBalance` 402 拦截，管理员 CLI 发放，杜绝陌生人刷爆 API Key → [docs/credits.md](./docs/credits.md)
 - [ ] 按需扩展业务模块
 
 ## 许可证与致谢

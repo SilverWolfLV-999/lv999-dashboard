@@ -14,6 +14,7 @@ LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然�
 - **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）、`createVideoAsset`（文生视频 T2V）、`createVideoFromImageAsset`（图生视频 I2V）、`findAssets` / `readAsset`（资产复用）、`knowledgeSearch`（知识库语义检索）。
 - **流式**：`resumable-stream` 可恢复 SSE，刷新 / 切回自动重连；停止走专用端点（跨实例真取消）。
 - **持久化**：Drizzle ORM + PostgreSQL，三张表 `conversations` / `messages` / `assets`；图片 / 视频二进制存 OSS，库里只存 `storageKey`。
+- **计费**：对话 / 生图 / 生视频 / 知识库摄取均经 Credits `checkBalance` 入口拦截（余额 ≤0 返回 402）、按真实 usage「发起后按结果扣」，杜绝陌生人刷爆作者 API Key；详见 [docs/credits.md](./credits.md)。
 
 ---
 
@@ -280,11 +281,11 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 ---
 
-## 10. 限流与错误信封
+## 10. 限流、计费与错误信封
 
 ### 错误信封（API 契约硬化 v1）
 
-服务端可预期错误一律通过 [`apiError(status, code, message, headers?)`](../src/lib/api-error.ts) 返回 `{ error: { code, message } }`；`code` 取值：`unauthorized` / `invalid_json` / `invalid_request` / `not_found` / `payload_too_large` / `too_many_requests` / `not_implemented`。客户端 `api-client.ts` 的 `ApiError` 解析信封并暴露 `status` 与 `code`。
+服务端可预期错误一律通过 [`apiError(status, code, message, headers?)`](../src/lib/api-error.ts) 返回 `{ error: { code, message } }`；`code` 取值：`unauthorized` / `invalid_json` / `invalid_request` / `not_found` / `payload_too_large` / `too_many_requests` / `insufficient_credits` / `not_implemented`。客户端 `api-client.ts` 的 `ApiError` 解析信封并暴露 `status` 与 `code`。
 
 - **路径参数**：所有 `[id]` 路由先用 [`isUuid`](../src/lib/utils.ts) 预校验，非法格式返回 404 `not_found`（避免直达 DB 产生 500）。
 - **限流**：429 响应携带 `Retry-After` 头。
@@ -305,6 +306,10 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | `video` | 5 次 | 60s / 用户 | 视频生成（成本高于图片）——**在工具 `execute` 内校验**，命中抛中文错误由视频卡片展示（MVP 视频仅走流式 chat 路由，无法返回 HTTP 429）|
 
 请求体上限 `MAX_REQUEST_BYTES = 4MB`（chat / stop / favorite / image-edit / batch-delete 共用）；chat 另限 `MAX_MESSAGES=200`、`MAX_PARTS_PER_MESSAGE=500`。
+
+### Credits 计费（402 余额不足）
+
+所有付费 API 入口（对话 / 图片工具 / 直连图片编辑 / 视频工具 / 知识库摄取）在发起上游调用前经 `checkBalance`（`balance > 0`）拦截，余额不足返回 **402 `insufficient_credits`**（工具入口抛中文错误由卡片展示）。扣费按真实 usage「发起后按结果扣」：对话在流 `onEnd` 按累计 token 结算（`usageSink` 经 `onStepEnd` 桥接）；图片/视频经 `chargeOnGenerationResult`（成功/abort/超时/下载失败照扣，鉴权/参数/限流/**内容审核拒绝**不扣）；知识库摄取按 embedding tokens。完整计费规则、定价与数据模型见 [docs/credits.md](./credits.md)。
 
 ---
 

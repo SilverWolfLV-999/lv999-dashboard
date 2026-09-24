@@ -37,11 +37,13 @@ export async function embedQuery(value: string): Promise<number[]> {
 }
 
 /**
- * 批量向量化：摄取管线用，返回顺序与入参一致。
+ * 批量向量化：摄取管线用，返回顺序与入参一致 + 累计 tokens（供 Credits 计费）。
  * 分批 + 有限并发（逐组 await），单批失败即整体失败（由调用方置文档 failed）。
  */
-export async function embedTexts(values: string[]): Promise<number[][]> {
-  if (values.length === 0) return [];
+export async function embedTexts(
+  values: string[]
+): Promise<{ embeddings: number[][]; tokens: number }> {
+  if (values.length === 0) return { embeddings: [], tokens: 0 };
   const model = resolveEmbeddingModel();
   const batches: string[][] = [];
   for (let start = 0; start < values.length; start += EMBED_BATCH_SIZE) {
@@ -49,6 +51,7 @@ export async function embedTexts(values: string[]): Promise<number[][]> {
   }
 
   const embeddings: number[][] = [];
+  let tokens = 0;
   for (let start = 0; start < batches.length; start += EMBED_MAX_CONCURRENCY) {
     const group = batches.slice(start, start + EMBED_MAX_CONCURRENCY);
     const results = await Promise.all(
@@ -58,7 +61,9 @@ export async function embedTexts(values: string[]): Promise<number[][]> {
     );
     for (const result of results) {
       embeddings.push(...result.embeddings.map(assertDim));
+      // 累计 embedding tokens（供摄取成功后按 priceEmbedding 计费）
+      tokens += result.usage?.tokens ?? 0;
     }
   }
-  return embeddings;
+  return { embeddings, tokens };
 }

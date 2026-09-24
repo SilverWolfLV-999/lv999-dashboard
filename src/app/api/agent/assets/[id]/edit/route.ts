@@ -5,6 +5,10 @@ import { checkRateLimit } from '@/features/agent/api/rate-limit';
 import { ImageEditError, editImageAssetCore } from '@/features/agent/api/image-edit';
 import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
 import { editImageRequestSchema } from '@/features/agent/api/types';
+import { checkBalance } from '@/features/credits/api/service';
+import { chargeOnGenerationResult } from '@/features/credits/lib/billing';
+import { priceImage } from '@/features/credits/lib/pricing';
+import { INSUFFICIENT_CREDITS_API_MESSAGE } from '@/features/credits/constants/credits';
 
 export const runtime = 'nodejs';
 // I2I 同步生成实测 13-45s（上限 180s 超时），与 chat 路由同档
@@ -63,12 +67,29 @@ export async function POST(request: Request, context: RouteContext) {
     return apiError(400, 'invalid_request', 'instruction is required (1..2000 chars)');
   }
 
+  // 计费入口拦截：余额 ≤0 直接 402（不发起上游调用）
+  if (!(await checkBalance(userId))) {
+    return apiError(402, 'insufficient_credits', INSUFFICIENT_CREDITS_API_MESSAGE);
+  }
+
   try {
-    const asset = await editImageAssetCore({
+    // 发起后按结果扣（I2I 与 T2I 同价）：源图预检失败（ImageEditError，未发起上游）不扣；
+    // abort/超时/下载失败（billable）照扣；成功按张扣费
+    const asset = await chargeOnGenerationResult({
       userId,
-      sourceAssetId: id,
-      instruction: trimmedInstruction,
-      aspect
+      kind: 'image',
+      fallbackCharge: { cost: priceImage(true), meta: { edit: true, sourceAssetId: id } },
+      run: () =>
+        editImageAssetCore({
+          userId,
+          sourceAssetId: id,
+          instruction: trimmedInstruction,
+          aspect
+        }),
+      buildCharge: (created) => ({
+        cost: priceImage(true),
+        meta: { assetId: created.id, edit: true, sourceAssetId: id }
+      })
     });
     return Response.json({ id: asset.id });
   } catch (error) {

@@ -14,7 +14,8 @@ import { createResumableStreamContext } from 'resumable-stream';
 import {
   agentValidationTools,
   buildAgent,
-  type AgentValidationUIMessage
+  type AgentValidationUIMessage,
+  type UsageSink
 } from '@/features/agent/api/agent';
 import {
   applyAutoTitle,
@@ -29,6 +30,9 @@ import {
 import { requestAgentStop, watchAgentStop } from '@/features/agent/api/stop-signal';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
 import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
+import { chargeCredits, checkBalance } from '@/features/credits/api/service';
+import { priceChat } from '@/features/credits/lib/pricing';
+import { INSUFFICIENT_CREDITS_API_MESSAGE } from '@/features/credits/constants/credits';
 import { apiError } from '@/lib/api-error';
 
 export const runtime = 'nodejs';
@@ -111,11 +115,20 @@ export async function POST(request: Request) {
     return apiError(404, 'not_found', 'Conversation not found');
   }
 
+  // 计费入口拦截：限流后、建流前；余额 ≤0 直接 402（不发起上游调用，杜绝陌生人刷爆 API）
+  if (!(await checkBalance(userId))) {
+    return apiError(402, 'insufficient_credits', INSUFFICIENT_CREDITS_API_MESSAGE);
+  }
+
+  // usage 累加器：onStepEnd 累加每步 token，onEnd 据此结算扣费（每请求新建，serverless 无跨请求污染）
+  const usageSink: UsageSink = { inputTokens: 0, outputTokens: 0 };
+
   const agent = buildAgent({
     userId,
     conversationId,
     modelKey: conversation.model,
-    skillId: conversation.activeSkillId
+    skillId: conversation.activeSkillId,
+    usageSink
   });
   type AgentUIMessage = InferAgentUIMessage<typeof agent>;
 
@@ -174,12 +187,39 @@ export async function POST(request: Request) {
       generateMessageId: generateId,
       // 把本轮流 id 随响应消息的 metadata 下发（客户端停止时据此携带最新流 id）
       messageMetadata: ({ part }) => (part.type === 'start' ? { streamId } : undefined),
-      onEnd: async ({ messages: finalMessages }) => {
+      onEnd: async ({ messages: finalMessages, isAborted, outcome }) => {
         stopWatching();
         // 按所有权更新：仅本轮新消息允许冲突更新，旧消息（客户端视图）不覆盖（见 service.ts）
         await syncConversationMessages(conversationId, messages, finalMessages);
         await clearConversationActiveStream(conversationId, streamId);
         await touchConversation(conversationId);
+        // 结算扣费（仅 POST 生产者 onEnd 一次；GET 重连只读 Redis 流不触发，无双扣）：
+        // 按 onStepEnd 累计 usage 结算，abort 也扣已完成步；completed/aborted 即使 usage 缺失也至少扣 1（兜底）；
+        // failed 且无任何已完成步（0 token）→ 不扣（未产生生成）。结算失败不阻断已完成的流（消息已持久化）。
+        const hasUsage = usageSink.inputTokens > 0 || usageSink.outputTokens > 0;
+        if (hasUsage || outcome.status !== 'failed') {
+          try {
+            const cost = priceChat(
+              conversation.model,
+              usageSink.inputTokens,
+              usageSink.outputTokens
+            );
+            await chargeCredits({
+              userId,
+              cost,
+              kind: 'chat',
+              meta: {
+                model: conversation.model,
+                inputTokens: usageSink.inputTokens,
+                outputTokens: usageSink.outputTokens,
+                conversationId,
+                aborted: isAborted
+              }
+            });
+          } catch (error) {
+            console.error('[agent] chat credit settlement failed', { conversationId, error });
+          }
+        }
       }
     }),
     async consumeSseStream({ stream }) {

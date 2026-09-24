@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api-client';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@/features/credits/constants/credits';
 import { ASPECT_KEYS, type AspectKey } from '../../constants/image-models';
 import { editImageAssetMutation } from '../../api/mutations';
 import type { Asset } from '../../api/types';
@@ -77,13 +78,15 @@ export function ImageEditDialog({ asset, open, onOpenChange, onSuccess }: ImageE
         },
         onError: (error) => {
           const message =
-            error instanceof ApiError && error.status === 429
-              ? '操作过于频繁，请稍后再试'
-              : error instanceof ApiError && error.status === 404
-                ? '源图片不存在或已被删除'
-                : error instanceof ApiError && error.status === 413
-                  ? '源图片超过 10MB 编辑上限'
-                  : '图片生成失败，请稍后重试';
+            error instanceof ApiError && error.status === 402
+              ? INSUFFICIENT_CREDITS_MESSAGE
+              : error instanceof ApiError && error.status === 429
+                ? '操作过于频繁，请稍后再试'
+                : error instanceof ApiError && error.status === 404
+                  ? '源图片不存在或已被删除'
+                  : error instanceof ApiError && error.status === 413
+                    ? '源图片超过 10MB 编辑上限'
+                    : '图片生成失败，请稍后重试';
           toast.error(message);
         }
       }

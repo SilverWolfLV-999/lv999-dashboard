@@ -16,6 +16,10 @@ import { checkRateLimit } from './rate-limit';
 import { createAsset, createImageAsset, createVideoAsset, getAsset, searchAssets } from './service';
 import { ASSET_KIND_VALUES } from './types';
 import { searchKnowledgeByText } from '@/features/knowledge/lib/search';
+import { checkBalance } from '@/features/credits/api/service';
+import { chargeOnGenerationResult } from '@/features/credits/lib/billing';
+import { priceImage, priceVideo } from '@/features/credits/lib/pricing';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@/features/credits/constants/credits';
 import { getSignedUrl } from '@/lib/oss';
 import type { AssetKind } from './types';
 
@@ -262,17 +266,33 @@ function createImageAssetTool(params: { userId: string; conversationId: string }
     description: CREATE_IMAGE_ASSET_DESCRIPTION,
     inputSchema: createImageAssetInputSchema,
     execute: async ({ title, prompt, aspect }, { abortSignal }) => {
+      // 计费入口拦截：余额 ≤0 直接拒绝（不发起上游调用），中文错误由工具输出展示
+      if (!(await checkBalance(params.userId))) {
+        throw new Error(INSUFFICIENT_CREDITS_MESSAGE);
+      }
       // 「调用 → 拿临时 URL → 立即下载」在 generateImage 内完成（临时 URL 不外泄）；
       // abortSignal 透传：停止时同步取消进行中的请求与轮询（已创建的百炼任务会自然完成，无副作用）
       const size = aspect ? ASPECT_PRESETS[aspect] : undefined;
-      const { imageBuffer, mime } = await generateImage({ prompt, size, signal: abortSignal });
-      const asset = await createImageAsset({
+      // 发起后按结果扣：成功扣费；abort/超时/下载失败（billable）照扣；鉴权/参数/限流/审核拒绝不扣
+      const asset = await chargeOnGenerationResult({
         userId: params.userId,
-        conversationId: params.conversationId,
-        title,
-        prompt,
-        imageBuffer,
-        mime
+        kind: 'image',
+        fallbackCharge: { cost: priceImage(false), meta: { edit: false } },
+        run: async () => {
+          const { imageBuffer, mime } = await generateImage({ prompt, size, signal: abortSignal });
+          return createImageAsset({
+            userId: params.userId,
+            conversationId: params.conversationId,
+            title,
+            prompt,
+            imageBuffer,
+            mime
+          });
+        },
+        buildCharge: (created) => ({
+          cost: priceImage(false),
+          meta: { assetId: created.id, edit: false }
+        })
       });
       // 返回结构与 createAsset 对齐，复用对话内资产卡片渲染
       return { assetId: asset.id, title, kind: 'image' as const, sizeBytes: asset.sizeBytes };
@@ -285,16 +305,31 @@ export function editImageAssetTool(params: { userId: string; conversationId: str
     description: EDIT_IMAGE_ASSET_DESCRIPTION,
     inputSchema: editImageAssetInputSchema,
     execute: async ({ sourceAssetId, title, instruction, aspect }, { abortSignal }) => {
+      // 计费入口拦截：余额 ≤0 直接拒绝（不发起上游调用）
+      if (!(await checkBalance(params.userId))) {
+        throw new Error(INSUFFICIENT_CREDITS_MESSAGE);
+      }
       // 核心流程（预检 → 签名 URL → I2I → 落库血缘）抽至 image-edit.ts，与直连端点复用；
       // abortSignal 透传：停止时同步取消进行中的请求（已创建的百炼任务会自然完成，无副作用）
-      const asset = await editImageAssetCore({
+      // 发起后按结果扣（I2I 与 T2I 同价）：源图预检失败（ImageEditError，未发起上游）不扣
+      const asset = await chargeOnGenerationResult({
         userId: params.userId,
-        sourceAssetId,
-        instruction,
-        aspect,
-        title,
-        conversationId: params.conversationId,
-        signal: abortSignal
+        kind: 'image',
+        fallbackCharge: { cost: priceImage(true), meta: { edit: true, sourceAssetId } },
+        run: () =>
+          editImageAssetCore({
+            userId: params.userId,
+            sourceAssetId,
+            instruction,
+            aspect,
+            title,
+            conversationId: params.conversationId,
+            signal: abortSignal
+          }),
+        buildCharge: (created) => ({
+          cost: priceImage(true),
+          meta: { assetId: created.id, edit: true, sourceAssetId }
+        })
       });
       // 返回结构与 createImageAsset 对齐，复用对话内资产卡片渲染；sourceAssetId 供后续继续迭代追溯
       return {
@@ -331,22 +366,49 @@ function createVideoAssetTool(params: { userId: string; conversationId: string }
           `视频生成过于频繁（每 ${VIDEO_RATE_WINDOW_SECONDS} 秒最多 ${VIDEO_RATE_LIMIT} 次），请稍后再试。`
         );
       }
-      const { videoBuffer, mime } = await generateVideoAsset({
-        prompt,
-        aspect,
-        duration,
-        signal: abortSignal
-      });
-      const asset = await createVideoAsset({
+      // 计费入口拦截：与限流并列，余额 ≤0 直接拒绝（不发起上游调用）
+      if (!(await checkBalance(params.userId))) {
+        throw new Error(INSUFFICIENT_CREDITS_MESSAGE);
+      }
+      // 工具默认 720P（generateVideoAsset 缺省档）；错误兜底按入参时长估算
+      const fallbackDuration = duration ?? 5;
+      // 发起后按结果扣：成功按实际分辨率×秒扣；abort/超时/下载失败（billable）按兜底照扣；审核/鉴权/参数/限流不扣
+      const result = await chargeOnGenerationResult({
         userId: params.userId,
-        conversationId: params.conversationId,
-        title,
-        prompt,
-        videoBuffer,
-        mime
+        kind: 'video',
+        fallbackCharge: {
+          cost: priceVideo('720P', fallbackDuration),
+          meta: { resolution: '720P', duration: fallbackDuration }
+        },
+        run: async () => {
+          const generated = await generateVideoAsset({
+            prompt,
+            aspect,
+            duration,
+            signal: abortSignal
+          });
+          const asset = await createVideoAsset({
+            userId: params.userId,
+            conversationId: params.conversationId,
+            title,
+            prompt,
+            videoBuffer: generated.videoBuffer,
+            mime: generated.mime
+          });
+          return { asset, resolution: generated.resolution, duration: generated.duration };
+        },
+        buildCharge: (r) => ({
+          cost: priceVideo(r.resolution, r.duration),
+          meta: { assetId: r.asset.id, resolution: r.resolution, duration: r.duration }
+        })
       });
       // 返回结构与 createImageAsset 对齐，复用对话内视频卡片渲染
-      return { assetId: asset.id, title, kind: 'video' as const, sizeBytes: asset.sizeBytes };
+      return {
+        assetId: result.asset.id,
+        title,
+        kind: 'video' as const,
+        sizeBytes: result.asset.sizeBytes
+      };
     }
   });
 }
@@ -372,7 +434,12 @@ function createVideoFromImageAssetTool(params: { userId: string; conversationId:
           `视频生成过于频繁（每 ${VIDEO_RATE_WINDOW_SECONDS} 秒最多 ${VIDEO_RATE_LIMIT} 次），请稍后再试。`
         );
       }
+      // 计费入口拦截：与限流并列，余额 ≤0 直接拒绝（不发起上游调用）
+      if (!(await checkBalance(params.userId))) {
+        throw new Error(INSUFFICIENT_CREDITS_MESSAGE);
+      }
       // 归属校验：源资产必须属于当前用户、为图片且已转入 OSS（越权与不存在同样返回 undefined）
+      // 预检失败（未发起上游）→ 不扣
       const source = await getAsset(params.userId, sourceAssetId);
       if (!source || source.kind !== 'image' || !source.storageKey) {
         throw new Error(
@@ -384,29 +451,52 @@ function createVideoFromImageAssetTool(params: { userId: string; conversationId:
       }
       // 源图经短期签名 URL 直传百炼作首帧（公网可达；TTL 900s 与图片编辑一致）
       const firstFrameUrl = await getSignedUrl(source.storageKey, 900);
-      const { videoBuffer, mime } = await generateVideoAsset({
-        prompt,
-        modelKey: DEFAULT_I2V_MODEL,
-        aspect,
-        duration,
-        firstFrameUrl,
-        signal: abortSignal
-      });
-      const asset = await createVideoAsset({
+      // 工具默认 720P；错误兜底按入参时长估算
+      const fallbackDuration = duration ?? 5;
+      // 发起后按结果扣：成功按实际分辨率×秒扣；abort/超时/下载失败（billable）按兜底照扣；审核/鉴权/参数/限流不扣
+      const result = await chargeOnGenerationResult({
         userId: params.userId,
-        conversationId: params.conversationId,
-        title,
-        prompt,
-        videoBuffer,
-        mime,
-        sourceAssetId
+        kind: 'video',
+        fallbackCharge: {
+          cost: priceVideo('720P', fallbackDuration),
+          meta: { resolution: '720P', duration: fallbackDuration, sourceAssetId }
+        },
+        run: async () => {
+          const generated = await generateVideoAsset({
+            prompt,
+            modelKey: DEFAULT_I2V_MODEL,
+            aspect,
+            duration,
+            firstFrameUrl,
+            signal: abortSignal
+          });
+          const asset = await createVideoAsset({
+            userId: params.userId,
+            conversationId: params.conversationId,
+            title,
+            prompt,
+            videoBuffer: generated.videoBuffer,
+            mime: generated.mime,
+            sourceAssetId
+          });
+          return { asset, resolution: generated.resolution, duration: generated.duration };
+        },
+        buildCharge: (r) => ({
+          cost: priceVideo(r.resolution, r.duration),
+          meta: {
+            assetId: r.asset.id,
+            resolution: r.resolution,
+            duration: r.duration,
+            sourceAssetId
+          }
+        })
       });
       // 返回结构与 editImageAsset 对齐；sourceAssetId 供后续追溯血缘
       return {
-        assetId: asset.id,
+        assetId: result.asset.id,
         title,
         kind: 'video' as const,
-        sizeBytes: asset.sizeBytes,
+        sizeBytes: result.asset.sizeBytes,
         sourceAssetId
       };
     }
@@ -498,6 +588,17 @@ function knowledgeSearchTool(params: { userId: string }) {
 }
 
 /**
+ * 对话 usage 累加器（route 创建并传入 buildAgent）。
+ * onStepEnd 把每步 usage 累加进去（对已完成的步触发，含 abort 前的步），
+ * route 的 toUIMessageStream onEnd 读累加器 + isAborted 统一结算扣费。
+ * （toUIMessageStream 的 onEnd 不暴露 usage，故须经 onStepEnd 桥接，见 docs/credits.md §6.1）
+ */
+export interface UsageSink {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
  * 每请求构建一个 Agent（serverless 无状态，上下文经闭包注入工具）。
  * skillId：会话级技能（专家模式）；命中注册表时把技能指令追加到基础指令后。
  * 防御：未知/已下架 id（getSkill → undefined）回退基础指令，不报错。
@@ -507,6 +608,8 @@ export function buildAgent(params: {
   conversationId: string;
   modelKey: string;
   skillId?: string | null;
+  /** 可变 usage 累加器：onStepEnd 累加每步 usage，供 route 的 onEnd 结算扣费（每请求新建，无跨请求污染） */
+  usageSink?: UsageSink;
 }) {
   const modelKey = isModelKey(params.modelKey) ? params.modelKey : DEFAULT_MODEL;
   const skill = getSkill(params.skillId);
@@ -532,6 +635,12 @@ export function buildAgent(params: {
     timeout: { totalMs: 295_000 },
     // 生命周期回调（官方推荐 onStepEnd/onEnd）：记录 step/usage/工具调用，为限额、计费与排障提供数据
     onStepEnd: ({ stepNumber, finishReason, toolCalls, usage }) => {
+      // 累加每步 usage 到 route 传入的累加器（对已完成的步触发，含 abort 前的步）；
+      // token 可能 undefined（provider 未回），防御为 0，结算侧 priceChat 再兑底至少 1 credit
+      if (params.usageSink) {
+        params.usageSink.inputTokens += usage.inputTokens ?? 0;
+        params.usageSink.outputTokens += usage.outputTokens ?? 0;
+      }
       console.warn('[agent] step finished', {
         stepNumber,
         finishReason,

@@ -22,6 +22,23 @@ import {
 import { ChatComposer } from './chat-composer';
 import { ChatEmptyState } from './chat-empty-state';
 import { MessageItem } from './message-item';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@/features/credits/constants/credits';
+
+/**
+ * 解析对话流错误文案。
+ * DefaultChatTransport 对非 2xx 响应抛 `new Error(await response.text())`，
+ * 故 402 时 error.message 为错误信封 JSON 串；解析出 insufficient_credits 映射为余额不足文案。
+ */
+function resolveChatErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  try {
+    const parsed = JSON.parse(raw) as { error?: { code?: string } };
+    if (parsed?.error?.code === 'insufficient_credits') return INSUFFICIENT_CREDITS_MESSAGE;
+  } catch {
+    // 非 JSON（网络错误 / 中断等），走默认文案
+  }
+  return '生成出错了，请重试。';
+}
 
 interface ChatWindowProps {
   conversation?: Conversation;
@@ -194,7 +211,7 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
           )}
           {error && (
             <div className='border-destructive/40 bg-destructive/5 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm'>
-              <span className='text-destructive'>生成出错了，请重试。</span>
+              <span className='text-destructive'>{resolveChatErrorMessage(error)}</span>
               <Button
                 variant='outline'
                 size='sm'

@@ -3,6 +3,7 @@ import {
   resolveImageModel,
   type ImageModelRegistryEntry
 } from '../constants/image-models';
+import { GenerationError } from './generation-error';
 
 /**
  * 图片生成通道（server-only）：直连百炼 REST API，不引入任何新依赖（fetch + Buffer 已足够）。
@@ -34,7 +35,10 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 function getApiKey(): string {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
-    throw new Error('图片生成服务未配置（缺少 DASHSCOPE_API_KEY）。');
+    // 配置错误（未发起上游调用）→ 不扣
+    throw new GenerationError('图片生成服务未配置（缺少 DASHSCOPE_API_KEY）。', {
+      billable: false
+    });
   }
   return apiKey;
 }
@@ -55,16 +59,22 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
       status: response.status,
       body: text.slice(0, 300)
     });
-    throw new Error(`图片生成失败（HTTP ${response.status}，非 JSON 响应）。`);
+    // 网关非 JSON 报错（上游明确失败）→ 不扣
+    throw new GenerationError(`图片生成失败（HTTP ${response.status}，非 JSON 响应）。`, {
+      billable: false
+    });
   }
 }
 
-/** 百炼错误（顶层 code/message 或 output.code/message）映射为用户可读中文（详情走日志） */
+/**
+ * 百炼错误（顶层 code/message 或 output.code/message）映射为用户可读中文（详情走日志）。
+ * 全部为「上游明确返回失败」→ billable=false（百炼失败不计费，见 docs/credits.md §7）。
+ */
 function toUserFacingError(
   body: Record<string, unknown>,
   httpStatus: number,
   context: string
-): Error {
+): GenerationError {
   const output = body.output as Record<string, unknown> | undefined;
   const code = (body.code ?? output?.code) as string | undefined;
   const message = (body.message ?? output?.message) as string | undefined;
@@ -76,15 +86,22 @@ function toUserFacingError(
     httpStatus === 401 ||
     httpStatus === 403
   ) {
-    return new Error('图片服务鉴权失败，请检查 API Key 配置。');
+    return new GenerationError('图片服务鉴权失败，请检查 API Key 配置。', { billable: false });
   }
   if (code === 'DataInspectionFailed' || code === 'IPInfringementSuspect') {
-    return new Error('内容审核未通过，请调整画面描述后重试。');
+    // 内容审核拒绝是 400 失败，百炼不计费 → 不扣（纠正原「照扣」假设）
+    return new GenerationError('内容审核未通过，请调整画面描述后重试。', { billable: false });
+  }
+  if (code === 'Throttling' || httpStatus === 429) {
+    return new GenerationError('图片生成繁忙（触发限流），请稍后再试。', { billable: false });
   }
   if (code === 'InvalidParameter' || httpStatus === 400) {
-    return new Error(`图片生成参数错误：${message ?? '请调整描述后重试。'}`);
+    return new GenerationError(`图片生成参数错误：${message ?? '请调整描述后重试。'}`, {
+      billable: false
+    });
   }
-  return new Error('图片生成失败，请稍后重试。');
+  // 其余上游明确返回的失败（5xx / 任务 FAILED 等）→ 不扣
+  return new GenerationError('图片生成失败，请稍后重试。', { billable: false });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -101,17 +118,20 @@ async function fetchImageApi(url: string, init: RequestInit, context: string): P
     return await fetch(url, init);
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('图片生成已停止。', { cause: error });
+      // 用户停止：任务可能已提交、上游状态未知 → 保守照扣
+      throw new GenerationError('图片生成已停止。', { cause: error, billable: true });
     }
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       console.error('[agent] image api request timed out', { context });
-      throw new Error('图片生成请求超时，请稍后重试。', { cause: error });
+      // 阶段超时：任务可能已提交并完成 → 保守照扣
+      throw new GenerationError('图片生成请求超时，请稍后重试。', { cause: error, billable: true });
     }
     console.error('[agent] image api network error', {
       context,
       error: error instanceof Error ? error.message : error
     });
-    throw new Error('图片生成网络错误，请稍后重试。', { cause: error });
+    // 提交前网络错误（未到达上游）→ 不扣
+    throw new GenerationError('图片生成网络错误，请稍后重试。', { cause: error, billable: false });
   }
 }
 
@@ -155,7 +175,8 @@ async function generateViaAsyncTask(
   let lastStatus = 'PENDING';
   while (Date.now() < deadline) {
     // 停止联动：轮询循环每轮检查 abortSignal（已创建的百炼任务无法取消，会自然完成，无副作用）
-    if (signal?.aborted) throw new Error('图片生成已停止。');
+    // 任务已提交、上游状态未知 → 保守照扣
+    if (signal?.aborted) throw new GenerationError('图片生成已停止。', { billable: true });
     await sleep(POLL_INTERVAL_MS);
     const queried = await readJson(
       await fetchImageApi(
@@ -174,7 +195,8 @@ async function generateViaAsyncTask(
       const url = results?.[0]?.url;
       if (!url) {
         console.error('[agent] image task succeeded but no url returned');
-        throw new Error('图片生成失败：任务成功但未返回图片。');
+        // 任务已成功（上游已计费）但未返回图片 → 照扣
+        throw new GenerationError('图片生成失败：任务成功但未返回图片。', { billable: true });
       }
       return url;
     }
@@ -183,7 +205,10 @@ async function generateViaAsyncTask(
     }
   }
   console.error('[agent] image task polling timed out', { timeoutMs: POLL_TIMEOUT_MS, lastStatus });
-  throw new Error(`图片生成超时（超过 ${POLL_TIMEOUT_MS / 1000} 秒），请稍后重试。`);
+  // 轮询超时：任务已提交、上游可能已完成计费 → 保守照扣
+  throw new GenerationError(`图片生成超时（超过 ${POLL_TIMEOUT_MS / 1000} 秒），请稍后重试。`, {
+    billable: true
+  });
 }
 
 /** 同步协议：一次请求等待结果（3.0 系列；T2I 与 I2I 共用此路径） */
@@ -228,7 +253,8 @@ async function generateViaSync(
   const url = output?.choices?.[0]?.message?.content?.[0]?.image;
   if (!url) {
     console.error('[agent] sync image response has no image url');
-    throw new Error('图片生成失败：响应中未包含图片。');
+    // 响应 200 但未包含图片（上游未交付可用结果）→ 不扣
+    throw new GenerationError('图片生成失败：响应中未包含图片。', { billable: false });
   }
   return url;
 }
@@ -236,6 +262,7 @@ async function generateViaSync(
 /**
  * 下载临时图 → 校验 PNG 魔数与体积上限 → 返回 Buffer（临时 URL 到此为止，不外泄）。
  * 网络抖动重试 1 次（实测偶发 Unable to connect）；用户停止 / 超时不重试。
+ * 图片此时已上游成功生成（已拿到临时 URL）→ 本函数所有失败均为「已生成后下载失败」→ billable=true。
  */
 async function downloadImage(url: string, signal: AbortSignal | undefined): Promise<Buffer> {
   let response: Response | undefined;
@@ -246,11 +273,11 @@ async function downloadImage(url: string, signal: AbortSignal | undefined): Prom
     } catch (error) {
       lastError = error;
       if (signal?.aborted) {
-        throw new Error('图片生成已停止。', { cause: error });
+        throw new GenerationError('图片生成已停止。', { cause: error, billable: true });
       }
       if (error instanceof DOMException && error.name === 'TimeoutError') {
         console.error('[agent] image download timed out', { attempt });
-        throw new Error('图片下载超时，请稍后重试。', { cause: error });
+        throw new GenerationError('图片下载超时，请稍后重试。', { cause: error, billable: true });
       }
       console.warn('[agent] image download attempt failed', {
         attempt,
@@ -260,22 +287,25 @@ async function downloadImage(url: string, signal: AbortSignal | undefined): Prom
   }
   if (!response) {
     console.error('[agent] image download failed after retries');
-    throw new Error('图片下载网络错误，请稍后重试。', { cause: lastError });
+    throw new GenerationError('图片下载网络错误，请稍后重试。', {
+      cause: lastError,
+      billable: true
+    });
   }
   if (!response.ok) {
     console.error('[agent] image download failed', { status: response.status });
-    throw new Error('图片下载失败，请稍后重试。');
+    throw new GenerationError('图片下载失败，请稍后重试。', { billable: true });
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   if (!buffer.subarray(0, 8).equals(PNG_MAGIC)) {
     console.error('[agent] downloaded image is not PNG', {
       headHex: buffer.subarray(0, 8).toString('hex')
     });
-    throw new Error('图片下载失败：返回内容不是 PNG。');
+    throw new GenerationError('图片下载失败：返回内容不是 PNG。', { billable: true });
   }
   if (buffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
     console.error('[agent] image exceeds size limit', { bytes: buffer.byteLength });
-    throw new Error('图片体积超过 15MB 上限，已拒绝入库。');
+    throw new GenerationError('图片体积超过 15MB 上限，已拒绝入库。', { billable: true });
   }
   return buffer;
 }
@@ -299,7 +329,8 @@ export async function generateImage(params: {
   const entry = resolveImageModel(DEFAULT_IMAGE_MODEL);
   if (entry.protocol === 'async-task') {
     if (params.referenceImageUrl) {
-      throw new Error('当前图片模型不支持图像编辑。');
+      // 参数/能力不匹配（未发起上游调用）→ 不扣
+      throw new GenerationError('当前图片模型不支持图像编辑。', { billable: false });
     }
     const temporaryUrl = await generateViaAsyncTask(entry, params.prompt, params.signal);
     const imageBuffer = await downloadImage(temporaryUrl, params.signal);

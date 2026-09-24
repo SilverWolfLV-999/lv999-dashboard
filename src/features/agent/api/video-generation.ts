@@ -7,6 +7,7 @@ import {
   type VideoResolutionTier
 } from '../constants/video-models';
 import { resolveVideoModel } from './provider';
+import { GenerationError } from './generation-error';
 
 /**
  * 视频生成通道（server-only）：复用 AI SDK v7 的 experimental_generateVideo +
@@ -81,11 +82,16 @@ function errorHaystack(error: unknown): string {
   return parts.join(' ');
 }
 
-/** 视频生成错误映射为用户可读中文（仿图片模块 toUserFacingError；详情走日志） */
-function toUserFacingVideoError(error: unknown, signal: AbortSignal | undefined): Error {
-  // 用户停止优先（区别于服务端超时/失败）
+/**
+ * 视频生成错误映射为用户可读中文（仿图片模块 toUserFacingError；详情走日志）。
+ * billable 判据（见 docs/credits.md §7，百炼「失败不计费、仅对成功生成计费」）：
+ * - abort / 轮询超时 / 下载失败（上游状态未知或已生成）→ billable=true（保守照扣）
+ * - 审核拒绝 / 限流 / 鉴权 / 参数 / 其余上游明确失败 → billable=false（不扣）
+ */
+function toUserFacingVideoError(error: unknown, signal: AbortSignal | undefined): GenerationError {
+  // 用户停止优先（区别于服务端超时/失败）：任务已提交、上游可能已 SUCCEEDED 计费 → 照扣
   if (signal?.aborted || isAbortError(error)) {
-    return new Error('视频生成已停止。', { cause: error });
+    return new GenerationError('视频生成已停止。', { cause: error, billable: true });
   }
 
   const haystack = errorHaystack(error);
@@ -95,27 +101,43 @@ function toUserFacingVideoError(error: unknown, signal: AbortSignal | undefined)
   });
 
   if (/DataInspectionFailed|IPInfringement|inappropriate|greennet|risk/i.test(haystack)) {
-    return new Error('内容审核未通过，请调整画面描述后重试。', { cause: error });
+    // 内容审核拒绝是 400 失败，百炼不计费 → 不扣（纠正原「照扣」假设）
+    return new GenerationError('内容审核未通过，请调整画面描述后重试。', {
+      cause: error,
+      billable: false
+    });
   }
   if (/Throttling|RateLimit|LimitRequest|requests? per/i.test(haystack)) {
-    return new Error('视频生成繁忙（触发限流），请稍后再试。', { cause: error });
+    return new GenerationError('视频生成繁忙（触发限流），请稍后再试。', {
+      cause: error,
+      billable: false
+    });
   }
   if (/InvalidApiKey|AccessDenied|Unauthorized|Arrearage|Forbidden/i.test(haystack)) {
-    return new Error('视频服务鉴权失败或账户欠费，请检查 API Key 配置。', { cause: error });
+    return new GenerationError('视频服务鉴权失败或账户欠费，请检查 API Key 配置。', {
+      cause: error,
+      billable: false
+    });
   }
   if (/InvalidParameter|InvalidVideo|resolution|duration/i.test(haystack)) {
-    return new Error('视频参数错误：请调整时长或分辨率后重试。', { cause: error });
+    return new GenerationError('视频参数错误：请调整时长或分辨率后重试。', {
+      cause: error,
+      billable: false
+    });
   }
   if (/timeout|timed out|TimeoutError|poll/i.test(haystack)) {
-    return new Error(
+    // 轮询超时：任务已提交、上游可能已完成计费 → 保守照扣
+    return new GenerationError(
       `视频生成超时（超过 ${Math.round(VIDEO_POLL_TIMEOUT_MS / 1000)} 秒），请稍后重试或缩短时长。`,
-      { cause: error }
+      { cause: error, billable: true }
     );
   }
   if (/NoVideoGenerated|download|network|fetch failed|ECONN/i.test(haystack)) {
-    return new Error('视频下载失败，请稍后重试。', { cause: error });
+    // 已生成后下载/转存失败（上游状态未知或已计费）→ 保守照扣
+    return new GenerationError('视频下载失败，请稍后重试。', { cause: error, billable: true });
   }
-  return new Error('视频生成失败，请稍后重试。', { cause: error });
+  // 其余上游明确返回的失败 → 不扣
+  return new GenerationError('视频生成失败，请稍后重试。', { cause: error, billable: false });
 }
 
 /**
@@ -138,7 +160,14 @@ export async function generateVideoAsset(params: {
   firstFrameUrl?: string;
   /** 工具执行透传的 abortSignal（execute 第二参数），保证「停止」语义 */
   signal?: AbortSignal;
-}): Promise<{ videoBuffer: Buffer; mime: 'video/mp4' }> {
+}): Promise<{
+  videoBuffer: Buffer;
+  mime: 'video/mp4';
+  /** 实际生效的分辨率档（供计费；= 入参或默认 720P） */
+  resolution: VideoResolutionTier;
+  /** 实际生效的时长（秒，经钳制；供计费） */
+  duration: number;
+}> {
   const entry = resolveVideoModelEntry(params.modelKey ?? DEFAULT_VIDEO_MODEL);
   const model = resolveVideoModel(entry.providerModelId);
 
@@ -181,14 +210,16 @@ export async function generateVideoAsset(params: {
   const videoBuffer = Buffer.from(video.uint8Array);
   if (videoBuffer.byteLength > MAX_VIDEO_SIZE_BYTES) {
     console.error('[agent] video exceeds size limit', { bytes: videoBuffer.byteLength });
-    throw new Error('视频体积超过 100MB 上限，已拒绝入库。');
+    // 视频已上游成功生成 → 照扣
+    throw new GenerationError('视频体积超过 100MB 上限，已拒绝入库。', { billable: true });
   }
   // MP4 ftyp box 校验：拦截下载到的非视频内容（错误页/空响应）
   if (videoBuffer.byteLength < 12 || videoBuffer.toString('ascii', 4, 8) !== MP4_FTYP) {
     console.error('[agent] downloaded video is not MP4', {
       headHex: videoBuffer.subarray(0, 12).toString('hex')
     });
-    throw new Error('视频下载失败：返回内容不是有效的 MP4。');
+    // 已生成后下载内容非法（上游已计费）→ 照扣
+    throw new GenerationError('视频下载失败：返回内容不是有效的 MP4。', { billable: true });
   }
-  return { videoBuffer, mime: 'video/mp4' };
+  return { videoBuffer, mime: 'video/mp4', resolution: tier, duration };
 }

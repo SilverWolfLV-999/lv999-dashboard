@@ -14,6 +14,7 @@ export type ApiErrorCode =
   | 'not_found'
   | 'payload_too_large'
   | 'too_many_requests'
+  | 'insufficient_credits'
   | 'not_implemented';
 
 export function apiError(

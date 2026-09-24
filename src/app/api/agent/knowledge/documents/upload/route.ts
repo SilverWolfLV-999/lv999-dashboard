@@ -1,6 +1,8 @@
 import { auth } from '@clerk/nextjs/server';
 import { apiError } from '@/lib/api-error';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
+import { checkBalance } from '@/features/credits/api/service';
+import { INSUFFICIENT_CREDITS_API_MESSAGE } from '@/features/credits/constants/credits';
 import { createDocument } from '@/features/knowledge/api/service';
 import {
   ACCEPTED_FILE_EXTENSIONS,
@@ -48,6 +50,10 @@ export async function POST(request: Request) {
     return apiError(429, 'too_many_requests', 'Too many requests', {
       'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS)
     });
+  }
+  // 计费入口拦截：余额 ≤0 直接 402（摄取会触发 embedding 计费）
+  if (!(await checkBalance(userId))) {
+    return apiError(402, 'insufficient_credits', INSUFFICIENT_CREDITS_API_MESSAGE);
   }
 
   let form: FormData;

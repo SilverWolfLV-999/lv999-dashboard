@@ -1,4 +1,6 @@
 import { getAsset } from '@/features/agent/api/service';
+import { chargeCredits } from '@/features/credits/api/service';
+import { priceEmbedding } from '@/features/credits/lib/pricing';
 import type { ApiErrorCode } from '@/lib/api-error';
 import { markDocumentFailed, replaceChunks } from '../api/service';
 import {
@@ -135,7 +137,7 @@ export async function ingestChunks(params: {
   chunks: string[];
 }): Promise<IngestResult> {
   try {
-    const embeddings = await embedTexts(params.chunks);
+    const { embeddings, tokens } = await embedTexts(params.chunks);
     if (embeddings.length !== params.chunks.length) {
       throw new Error(
         `Embedding count mismatch: expected ${params.chunks.length}, got ${embeddings.length}`
@@ -146,6 +148,21 @@ export async function ingestChunks(params: {
       documentId: params.documentId,
       chunks: params.chunks.map((content, index) => ({ content, embedding: embeddings[index] }))
     });
+    // 摄取成功后按 embedding tokens 计费（失败不扣，见 docs/credits.md §6.3）；
+    // 计费失败不阻断已完成的摄取（否则会把已 ready 的文档误置 failed），仅记录供排查
+    try {
+      await chargeCredits({
+        userId: params.userId,
+        cost: priceEmbedding(tokens),
+        kind: 'knowledge',
+        meta: { documentId: params.documentId, tokens }
+      });
+    } catch (chargeError) {
+      console.error('[knowledge] credit settlement failed', {
+        documentId: params.documentId,
+        error: chargeError
+      });
+    }
     return { status: 'ready', chunkCount: params.chunks.length };
   } catch (error) {
     console.error('[knowledge] ingest failed:', { documentId: params.documentId, error });

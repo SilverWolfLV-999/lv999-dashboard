@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { assetsQueryOptions } from '@/features/agent/api/queries';
 import { getAssetKindMeta } from '@/features/agent/constants/kinds';
 import { formatDateTime } from '@/features/agent/lib/format';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@/features/credits/constants/credits';
 import { createKnowledgeDocumentMutation, uploadKnowledgeDocumentMutation } from '../api/mutations';
 import type { CreateDocumentRequest } from '../api/types';
 import { KNOWLEDGE_FILE_ACCEPT } from '../constants/files';
@@ -69,6 +70,7 @@ type AddDocumentValues = z.infer<typeof addDocumentSchema>;
 
 function resolveErrorMessage(error: unknown, mode: TabValue): string {
   if (error instanceof ApiError) {
+    if (error.status === 402) return INSUFFICIENT_CREDITS_MESSAGE;
     if (error.status === 429) return '操作过于频繁，请稍后再试';
     if (error.status === 413) {
       return mode === 'file' ? '文件超过 10MB 上限，或提取文本过大' : '文本过大，请精简后再试';

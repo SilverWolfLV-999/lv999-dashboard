@@ -25,6 +25,10 @@ import { vector1024 } from './vector';
  * - knowledge_documents: 知识库文档（手动粘贴 source='manual' / 从文本资产导入 source='asset'）；
  *   原始全文存 content 列（供重嵌与展示），摄取状态 status: processing → ready / failed
  * - knowledge_chunks: 文档切分片段 + 向量（pgvector）；文档删除时级联删除（CASCADE）
+ *
+ * Credits 消耗系统（成本管控底座）
+ * - credits_accounts: 每用户一行余额（懒创建，无记录视为 0；balance 可为负 = 单次透支）
+ * - credit_ledger: 流水（只增不改，审计 + 前端展示）；delta 正=grant 负=消耗，balanceAfter 为本笔后余额快照
  */
 
 export const conversations = pgTable('conversations', {
@@ -129,3 +133,34 @@ export const knowledgeChunks = pgTable(
 // HNSW 向量索引（drizzle-kit 不生成）由迁移 SQL 手动追加：
 // CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
 //   ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
+
+/**
+ * Credits 账户（每用户一行，懒创建）。
+ * 无该 user 行时视为 balance=0；首次 grant 或首次扣费时 upsert 建行。
+ * balance 允许为负：checkBalance 判据为 balance>0，已 grant 账号单次调用可透支（见 docs/credits.md §10）。
+ */
+export const creditsAccounts = pgTable('credits_accounts', {
+  userId: text('user_id').primaryKey(),
+  balance: integer('balance').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+/**
+ * Credits 流水（只增不改）：审计 + 前端展示。
+ * delta 正=grant、负=消耗；balanceAfter 为本笔后余额快照（免回算）；
+ * kind: grant/chat/image/video/knowledge；meta 记计量明细（tokens/张/分辨率·秒等）。
+ */
+export const creditLedger = pgTable(
+  'credit_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    delta: integer('delta').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    kind: text('kind').notNull(),
+    meta: jsonb('meta').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index('credit_ledger_user_created_idx').on(table.userId, table.createdAt)]
+);
