@@ -97,3 +97,13 @@ export const updateDesignRequestSchema = z.object({
 
 export type CreateDesignRequest = z.infer<typeof createDesignRequestSchema>;
 export type UpdateDesignRequest = z.infer<typeof updateDesignRequestSchema>;
+
+/**
+ * 本地图片上传响应（POST /api/agent/assets/upload）。
+ * width/height 由服务端 sharp 读取；读取失败时缺省（前端回退 /raw 加载读 naturalWidth）。
+ */
+export interface UploadImageResponse {
+  id: string;
+  width?: number;
+  height?: number;
+}

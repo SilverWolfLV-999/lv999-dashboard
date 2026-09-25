@@ -2,162 +2,118 @@
 
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { memo, useEffect, useRef, type RefObject } from 'react';
-import { Circle, Image as KonvaImage, Rect, Text as KonvaText, Transformer } from 'react-konva';
+import { memo, useCallback } from 'react';
+import { Circle, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
 import type { DesignObject } from '../api/types';
 import { TEXT_FONT_FAMILY } from '../constants/canvas';
-import type { ObjectPatch } from '../hooks/use-editor-reducer';
 import { useAssetImage } from '../hooks/use-asset-image';
 
 /**
  * 单个对象渲染器（Konva 官方 Canvas Editor 范式）：
- * - 文档是纯数据，节点只是交互层；只在 dragEnd / transformEnd 读节点值提交回 React；
- * - Transformer 通过改变 scale 缩放，提交前把 scale 折算回 width/height/radius/fontSize，
- *   并把节点 scale 归一，保证文档干净、与 Konva 内部解耦；
- * - memo 化：仅当自身 object / selected / isEditing 变化时重渲染。
+ * - 文档是纯数据，节点只是交互层；拖拽/变换只在结束时提交回 React（提交逻辑在 canvas 层）；
+ * - Transformer 已提到 canvas 层共享单例（多选官方范式）；本组件只经 registerShape 上报自身节点，
+ *   并把 id 写到 Konva 节点（node.id()）供 canvas 反查对象；
+ * - memo 化：仅当自身 object / isEditing 变化时重渲染（回调均为 canvas 层稳定引用）。
  */
-
-const SELECTION_COLOR = '#3b82f6';
 
 interface EditableObjectProps {
   object: DesignObject;
-  selected: boolean;
   isEditing: boolean;
-  onSelect: (id: string) => void;
-  onCommit: (id: string, patch: ObjectPatch) => void;
+  onSelect: (id: string, additive: boolean) => void;
+  onDragStart: (id: string) => void;
+  onDragMove: (id: string) => void;
+  onDragEnd: (id: string) => void;
   onStartTextEdit: (id: string) => void;
+  /** 上报自身 Konva 节点（卸载时传 null），供 canvas 层共享 Transformer 与拖拽收集 */
+  registerShape: (id: string, node: Konva.Shape | null) => void;
 }
 
 function EditableObjectImpl({
   object,
-  selected,
   isEditing,
   onSelect,
-  onCommit,
-  onStartTextEdit
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onStartTextEdit,
+  registerShape
 }: EditableObjectProps) {
-  const shapeRef = useRef<Konva.Shape | null>(null);
-  const transformerRef = useRef<Konva.Transformer | null>(null);
   const { image, status } = useAssetImage(object.type === 'image' ? object.assetId : null);
 
-  useEffect(() => {
-    if (selected && shapeRef.current && transformerRef.current) {
-      transformerRef.current.nodes([shapeRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
-    }
-  }, [selected]);
+  // ref 回调稳定（仅依赖 id/registerShape）：避免 memo 化对象每次渲染重挂 ref
+  const setShapeRef = useCallback(
+    (node: Konva.Shape | null) => registerShape(object.id, node),
+    [object.id, registerShape]
+  );
 
-  const handleSelect = () => onSelect(object.id);
+  const handleSelect = (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    onSelect(object.id, event.evt.shiftKey);
+  };
   const handleDoubleClick = () => {
     if (object.type === 'text') onStartTextEdit(object.id);
   };
-  const handleDragEnd = (event: KonvaEventObject<DragEvent>) => {
-    onCommit(object.id, { x: event.target.x(), y: event.target.y() });
-  };
-  const handleTransformEnd = () => {
-    const node = shapeRef.current;
-    if (!node) return;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    node.scaleX(1);
-    node.scaleY(1);
-    const base = { x: node.x(), y: node.y(), rotation: node.rotation() };
-    if (object.type === 'rect' || object.type === 'image') {
-      onCommit(object.id, {
-        ...base,
-        width: Math.max(1, node.width() * scaleX),
-        height: Math.max(1, node.height() * scaleY)
-      });
-    } else if (object.type === 'circle') {
-      const average = (scaleX + scaleY) / 2;
-      onCommit(object.id, { ...base, radius: Math.max(1, object.radius * average) });
-    } else if (object.type === 'text') {
-      const average = (scaleX + scaleY) / 2;
-      onCommit(object.id, { ...base, fontSize: Math.max(4, object.fontSize * average) });
-    }
-  };
+  const handleDragStart = () => onDragStart(object.id);
+  const handleDragMove = () => onDragMove(object.id);
+  const handleDragEnd = () => onDragEnd(object.id);
 
   const handlers = {
+    id: object.id,
     draggable: !isEditing,
     onClick: handleSelect,
     onTap: handleSelect,
     onDblClick: handleDoubleClick,
     onDblTap: handleDoubleClick,
-    onDragEnd: handleDragEnd,
-    onTransformEnd: handleTransformEnd
+    onDragStart: handleDragStart,
+    onDragMove: handleDragMove,
+    onDragEnd: handleDragEnd
   };
-
-  const transformer =
-    selected && !isEditing ? (
-      <Transformer
-        ref={transformerRef}
-        rotateEnabled
-        flipEnabled={false}
-        keepRatio={object.type !== 'rect'}
-        rotateAnchorOffset={24}
-        anchorSize={9}
-        anchorStroke={SELECTION_COLOR}
-        anchorFill='#ffffff'
-        borderStroke={SELECTION_COLOR}
-        boundBoxFunc={(oldBox, newBox) => (newBox.width < 8 || newBox.height < 8 ? oldBox : newBox)}
-      />
-    ) : null;
 
   if (object.type === 'rect') {
     return (
-      <>
-        <Rect
-          ref={shapeRef as RefObject<Konva.Rect | null>}
-          x={object.x}
-          y={object.y}
-          rotation={object.rotation}
-          width={object.width}
-          height={object.height}
-          fill={object.fill}
-          cornerRadius={object.cornerRadius}
-          {...handlers}
-        />
-        {transformer}
-      </>
+      <Rect
+        ref={setShapeRef}
+        x={object.x}
+        y={object.y}
+        rotation={object.rotation}
+        width={object.width}
+        height={object.height}
+        fill={object.fill}
+        cornerRadius={object.cornerRadius}
+        {...handlers}
+      />
     );
   }
 
   if (object.type === 'circle') {
     return (
-      <>
-        <Circle
-          ref={shapeRef as RefObject<Konva.Circle | null>}
-          x={object.x}
-          y={object.y}
-          rotation={object.rotation}
-          radius={object.radius}
-          fill={object.fill}
-          {...handlers}
-        />
-        {transformer}
-      </>
+      <Circle
+        ref={setShapeRef}
+        x={object.x}
+        y={object.y}
+        rotation={object.rotation}
+        radius={object.radius}
+        fill={object.fill}
+        {...handlers}
+      />
     );
   }
 
   if (object.type === 'text') {
     return (
-      <>
-        <KonvaText
-          ref={shapeRef as RefObject<Konva.Text | null>}
-          x={object.x}
-          y={object.y}
-          rotation={object.rotation}
-          text={object.text}
-          fontSize={object.fontSize}
-          fontStyle={object.fontStyle}
-          fontFamily={TEXT_FONT_FAMILY}
-          fill={object.fill}
-          {...(object.width ? { width: object.width } : {})}
-          visible={!isEditing}
-          {...handlers}
-        />
-        {transformer}
-      </>
+      <KonvaText
+        ref={setShapeRef}
+        x={object.x}
+        y={object.y}
+        rotation={object.rotation}
+        text={object.text}
+        fontSize={object.fontSize}
+        fontStyle={object.fontStyle}
+        fontFamily={TEXT_FONT_FAMILY}
+        fill={object.fill}
+        {...(object.width ? { width: object.width } : {})}
+        visible={!isEditing}
+        {...handlers}
+      />
     );
   }
 
@@ -179,7 +135,7 @@ function EditableObjectImpl({
         />
       )}
       <KonvaImage
-        ref={shapeRef as RefObject<Konva.Image | null>}
+        ref={setShapeRef}
         image={image ?? undefined}
         x={object.x}
         y={object.y}
@@ -188,7 +144,6 @@ function EditableObjectImpl({
         height={object.height}
         {...handlers}
       />
-      {transformer}
     </>
   );
 }

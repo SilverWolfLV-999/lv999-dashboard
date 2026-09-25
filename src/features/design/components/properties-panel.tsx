@@ -6,6 +6,8 @@ import { Icons, type Icon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import type { DesignObject, DesignObjectType } from '../api/types';
 import { CANVAS_PRESETS, FILL_SWATCHES, FONT_SIZE_PRESETS } from '../constants/canvas';
+import type { ObjectPatch, ObjectPatchEntry } from '../hooks/use-editor-reducer';
+import { objectBounds, unionBox } from '../lib/document';
 import { useEditor } from '../lib/editor-context';
 
 /**
@@ -120,6 +122,138 @@ function ObjectProperties({ object }: { object: DesignObject }) {
   );
 }
 
+/** 多选对齐方式：以选区包围盒为基准，按对象自身包围盒的差值平移（类型无关，圆/文字同样适用） */
+type AlignMode = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom';
+
+function computeAlignPatches(objects: DesignObject[], mode: AlignMode): ObjectPatchEntry[] {
+  if (objects.length < 2) return [];
+  const bbox = unionBox(objects.map(objectBounds));
+  if (!bbox) return [];
+  return objects.map((object) => {
+    const b = objectBounds(object);
+    let patch: ObjectPatch = {};
+    switch (mode) {
+      case 'left':
+        patch = { x: object.x + (bbox.x - b.x) };
+        break;
+      case 'centerX':
+        patch = { x: object.x + (bbox.x + bbox.width / 2 - (b.x + b.width / 2)) };
+        break;
+      case 'right':
+        patch = { x: object.x + (bbox.x + bbox.width - (b.x + b.width)) };
+        break;
+      case 'top':
+        patch = { y: object.y + (bbox.y - b.y) };
+        break;
+      case 'centerY':
+        patch = { y: object.y + (bbox.y + bbox.height / 2 - (b.y + b.height / 2)) };
+        break;
+      case 'bottom':
+        patch = { y: object.y + (bbox.y + bbox.height - (b.y + b.height)) };
+        break;
+    }
+    return { id: object.id, patch };
+  });
+}
+
+/** 多选属性：批量删除 / 对齐 / 图层前后（隐藏单对象样式编辑） */
+function MultiProperties() {
+  const { selectedIds, selectedObjects, commitObjects, removeObjects, reorderMany } = useEditor();
+  const align = (mode: AlignMode) => {
+    const patches = computeAlignPatches(selectedObjects, mode);
+    if (patches.length > 0) commitObjects(patches);
+  };
+
+  return (
+    <div className='space-y-4'>
+      <div className='flex items-center justify-between gap-2'>
+        <span className='text-sm font-medium'>已选 {selectedObjects.length} 个对象</span>
+        <Button
+          variant='ghost'
+          size='icon-sm'
+          aria-label='删除选中对象'
+          onClick={() => removeObjects(selectedIds)}
+          className='text-destructive hover:text-destructive'
+        >
+          <Icons.trash />
+        </Button>
+      </div>
+
+      <div className='space-y-1.5'>
+        <span className='text-muted-foreground text-xs'>对齐</span>
+        <div className='grid grid-cols-3 gap-1.5'>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='左对齐'
+            title='左对齐'
+            onClick={() => align('left')}
+          >
+            左
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='水平居中'
+            title='水平居中'
+            onClick={() => align('centerX')}
+          >
+            中
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='右对齐'
+            title='右对齐'
+            onClick={() => align('right')}
+          >
+            右
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='顶对齐'
+            title='顶对齐'
+            onClick={() => align('top')}
+          >
+            顶
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='垂直居中'
+            title='垂直居中'
+            onClick={() => align('centerY')}
+          >
+            中
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label='底对齐'
+            title='底对齐'
+            onClick={() => align('bottom')}
+          >
+            底
+          </Button>
+        </div>
+      </div>
+
+      <div className='space-y-1.5'>
+        <span className='text-muted-foreground text-xs'>层级</span>
+        <div className='flex gap-1.5'>
+          <Button variant='outline' size='sm' onClick={() => reorderMany(selectedIds, 'forward')}>
+            <Icons.chevronUp /> 上移
+          </Button>
+          <Button variant='outline' size='sm' onClick={() => reorderMany(selectedIds, 'backward')}>
+            <Icons.chevronDown /> 下移
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CanvasProperties() {
   const { document, updateDocument, fitToScreen } = useEditor();
 
@@ -169,7 +303,8 @@ function CanvasProperties() {
 }
 
 function LayersList() {
-  const { objects, selectedId, select } = useEditor();
+  const { objects, selectedIds, select, toggleSelect } = useEditor();
+  const selectedSet = new Set(selectedIds);
   // 逆序：数组末尾为最上层，列表顶部显示最上层
   const layered = objects.toReversed();
 
@@ -184,7 +319,7 @@ function LayersList() {
         <ul className='min-h-0 flex-1 overflow-y-auto px-2 pb-2'>
           {layered.map((object) => {
             const meta = OBJECT_TYPE_META[object.type];
-            const active = object.id === selectedId;
+            const active = selectedSet.has(object.id);
             const name =
               object.type === 'text'
                 ? object.text.split('\n')[0].slice(0, 18) || '文字'
@@ -193,7 +328,9 @@ function LayersList() {
               <li key={object.id}>
                 <button
                   type='button'
-                  onClick={() => select(object.id)}
+                  onClick={(event) =>
+                    event.shiftKey ? toggleSelect(object.id) : select([object.id])
+                  }
                   aria-current={active}
                   className={cn(
                     'hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
@@ -213,12 +350,18 @@ function LayersList() {
 }
 
 export function PropertiesPanel() {
-  const { selectedObject } = useEditor();
+  const { selectedObjects } = useEditor();
+  let body: React.ReactNode;
+  if (selectedObjects.length > 1) {
+    body = <MultiProperties />;
+  } else if (selectedObjects.length === 1) {
+    body = <ObjectProperties object={selectedObjects[0]} />;
+  } else {
+    body = <CanvasProperties />;
+  }
   return (
     <div className='flex h-full min-h-0 flex-col'>
-      <div className='shrink-0 p-3'>
-        {selectedObject ? <ObjectProperties object={selectedObject} /> : <CanvasProperties />}
-      </div>
+      <div className='shrink-0 p-3'>{body}</div>
       <Separator />
       <LayersList />
     </div>

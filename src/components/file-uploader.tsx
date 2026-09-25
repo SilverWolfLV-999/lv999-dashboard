@@ -146,7 +146,8 @@ export function FileUploader(props: FileUploaderProps) {
             setFiles([]);
             return '上传完成';
           },
-          error: '上传失败'
+          // 优先展示调用方抛出的具体错误消息（如「图片超过 10MB 上限」），无则回退通用文案
+          error: (error) => (error instanceof Error && error.message ? error.message : '上传失败')
         });
       }
     },

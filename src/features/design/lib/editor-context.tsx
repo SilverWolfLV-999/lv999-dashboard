@@ -21,7 +21,12 @@ import { ApiError } from '@/lib/api-client';
 import { createDesignMutation, updateDesignMutation } from '../api/mutations';
 import type { DesignDocument, DesignObject } from '../api/types';
 import { ZOOM_MAX, ZOOM_MIN } from '../constants/canvas';
-import { useEditorReducer, type EditorAction, type ObjectPatch } from '../hooks/use-editor-reducer';
+import {
+  useEditorReducer,
+  type EditorAction,
+  type ObjectPatch,
+  type ObjectPatchEntry
+} from '../hooks/use-editor-reducer';
 import { assetRawUrl } from '../hooks/use-asset-image';
 import { createImageObject, createShapeObject, type Point } from './document';
 import { dataUrlToBase64, downloadDataURL, exportStageToDataURL } from './export';
@@ -30,23 +35,38 @@ interface EditorContextValue {
   // 文档与选择
   document: DesignDocument;
   objects: DesignObject[];
-  selectedId: string | null;
+  selectedIds: string[];
+  selectedObjects: DesignObject[];
+  /** 主选对象（选中集首个派生）；无选中为 null */
   selectedObject: DesignObject | null;
   canUndo: boolean;
   canRedo: boolean;
+  canPaste: boolean;
   isDirty: boolean;
   dispatch: Dispatch<EditorAction>;
 
+  // 选择（稳定回调）
+  select: (ids: string[]) => void;
+  toggleSelect: (id: string) => void;
+  clearSelection: () => void;
+
   // 对象操作（稳定回调）
-  select: (id: string | null) => void;
   commitObject: (id: string, patch: ObjectPatch) => void;
+  commitObjects: (patches: ObjectPatchEntry[]) => void;
   removeObject: (id: string) => void;
+  removeObjects: (ids: string[]) => void;
   reorder: (id: string, direction: 'forward' | 'backward') => void;
+  reorderMany: (ids: string[], direction: 'forward' | 'backward') => void;
   updateDocument: (patch: Partial<Pick<DesignDocument, 'width' | 'height' | 'background'>>) => void;
   undo: () => void;
   redo: () => void;
   addShape: (type: 'rect' | 'circle' | 'text') => void;
   insertImage: (assetId: string, natural: { width: number; height: number } | null) => void;
+
+  // 复制粘贴（会话内剪贴板，不持久化到系统剪贴板）
+  copySelection: () => void;
+  paste: () => void;
+  duplicate: () => void;
 
   // 相机（缩放/平移）
   zoom: number;
@@ -81,6 +101,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** 复制/粘贴的默认偏移（px，文档坐标）；连续粘贴按次数累加避免重叠 */
+const PASTE_OFFSET = 24;
+
 interface EditorProviderProps {
   /** 已存 design 资产 id；新建时为 null */
   assetId: string | null;
@@ -112,6 +135,11 @@ export function EditorProvider({
   const containerSizeRef = useRef({ width: 0, height: 0 });
 
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+
+  // 会话内剪贴板：ref 存快照（复制不触发重渲染），count 供工具栏按钮 disabled 反应
+  const clipboardRef = useRef<DesignObject[]>([]);
+  const pasteCountRef = useRef(0);
+  const [clipboardCount, setClipboardCount] = useState(0);
 
   const stageRef = useRef<Konva.Stage | null>(null);
 
@@ -176,19 +204,68 @@ export function EditorProvider({
     }
   }, [containerSize, fitToScreen]);
 
-  const select = useCallback((id: string | null) => dispatch({ type: 'select', id }), [dispatch]);
+  const select = useCallback((ids: string[]) => dispatch({ type: 'select', ids }), [dispatch]);
+  const toggleSelect = useCallback(
+    (id: string) => dispatch({ type: 'toggle-select', id }),
+    [dispatch]
+  );
+  const clearSelection = useCallback(() => dispatch({ type: 'clear-select' }), [dispatch]);
   const commitObject = useCallback(
     (id: string, patch: ObjectPatch) => dispatch({ type: 'update-object', id, patch }),
     [dispatch]
   );
+  const commitObjects = useCallback(
+    (patches: ObjectPatchEntry[]) => dispatch({ type: 'update-objects', patches }),
+    [dispatch]
+  );
   const removeObject = useCallback(
-    (id: string) => dispatch({ type: 'remove-object', id }),
+    (id: string) => dispatch({ type: 'remove-objects', ids: [id] }),
+    [dispatch]
+  );
+  const removeObjects = useCallback(
+    (ids: string[]) => dispatch({ type: 'remove-objects', ids }),
     [dispatch]
   );
   const reorder = useCallback(
     (id: string, direction: 'forward' | 'backward') => dispatch({ type: 'reorder', id, direction }),
     [dispatch]
   );
+  const reorderMany = useCallback(
+    (ids: string[], direction: 'forward' | 'backward') =>
+      dispatch({ type: 'reorder-many', ids, direction }),
+    [dispatch]
+  );
+
+  // 复制选中到会话内剪贴板（浅拷贝快照；不入文档、不入历史）
+  const copySelection = useCallback(() => {
+    const current = stateRef.current;
+    const idSet = new Set(current.selectedIds);
+    const snapshots = current.present.objects
+      .filter((object) => idSet.has(object.id))
+      .map((object) => ({ ...object }) as DesignObject);
+    clipboardRef.current = snapshots;
+    pasteCountRef.current = 0;
+    setClipboardCount(snapshots.length);
+  }, []);
+
+  // 粘贴：读剪贴板快照 → reducer 克隆新 id + 累加偏移 → 选中新副本（一条历史）
+  const paste = useCallback(() => {
+    const clipboard = clipboardRef.current;
+    if (clipboard.length === 0) return;
+    pasteCountRef.current += 1;
+    dispatch({
+      type: 'paste-objects',
+      objects: clipboard,
+      offset: PASTE_OFFSET * pasteCountRef.current
+    });
+  }, [dispatch]);
+
+  // 直接复制选中并偏移（Ctrl+D）：不经剪贴板；重复按下因选中的是新副本而自然级联
+  const duplicate = useCallback(() => {
+    const current = stateRef.current;
+    if (current.selectedIds.length === 0) return;
+    dispatch({ type: 'duplicate-objects', ids: current.selectedIds, offset: PASTE_OFFSET });
+  }, [dispatch]);
   const updateDocument = useCallback(
     (patch: Partial<Pick<DesignDocument, 'width' | 'height' | 'background'>>) =>
       dispatch({ type: 'update-document', patch }),
@@ -370,31 +447,48 @@ export function EditorProvider({
         return;
       }
       const mod = event.metaKey || event.ctrlKey;
-      if (mod && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        void save();
-        return;
+      const key = event.key.toLowerCase();
+      if (mod) {
+        switch (key) {
+          case 's':
+            event.preventDefault();
+            void save();
+            return;
+          case 'z':
+            event.preventDefault();
+            if (event.shiftKey) redo();
+            else undo();
+            return;
+          case 'y':
+            event.preventDefault();
+            redo();
+            return;
+          case 'c':
+            event.preventDefault();
+            copySelection();
+            return;
+          case 'v':
+            event.preventDefault();
+            paste();
+            return;
+          case 'd':
+            // Ctrl+D 默认为浏览器书签，必须 preventDefault
+            event.preventDefault();
+            duplicate();
+            return;
+          default:
+            break;
+        }
       }
-      if (mod && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && event.key.toLowerCase() === 'y') {
-        event.preventDefault();
-        redo();
+      if (event.key === 'Escape') {
+        clearSelection();
         return;
       }
       const current = stateRef.current;
-      if (!current.selectedId) return;
+      if (current.selectedIds.length === 0) return;
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        removeObject(current.selectedId);
-        return;
-      }
-      if (event.key === 'Escape') {
-        select(null);
+        removeObjects(current.selectedIds);
         return;
       }
       const arrows: Record<string, Point> = {
@@ -407,20 +501,39 @@ export function EditorProvider({
       if (delta) {
         event.preventDefault();
         const step = event.shiftKey ? 10 : 1;
-        const obj = current.present.objects.find((o) => o.id === current.selectedId);
-        if (obj) {
-          commitObject(obj.id, { x: obj.x + delta.x * step, y: obj.y + delta.y * step });
-        }
+        const idSet = new Set(current.selectedIds);
+        const patches = current.present.objects
+          .filter((object) => idSet.has(object.id))
+          .map((object) => ({
+            id: object.id,
+            patch: { x: object.x + delta.x * step, y: object.y + delta.y * step }
+          }));
+        if (patches.length > 0) commitObjects(patches);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [editingTextId, endTextEdit, save, undo, redo, removeObject, select, commitObject]);
+  }, [
+    editingTextId,
+    endTextEdit,
+    save,
+    undo,
+    redo,
+    copySelection,
+    paste,
+    duplicate,
+    clearSelection,
+    removeObjects,
+    commitObjects
+  ]);
 
-  const selectedObject = useMemo(
-    () => state.present.objects.find((object) => object.id === state.selectedId) ?? null,
-    [state.present.objects, state.selectedId]
-  );
+  const selectedObjects = useMemo(() => {
+    if (state.selectedIds.length === 0) return [];
+    const idSet = new Set(state.selectedIds);
+    return state.present.objects.filter((object) => idSet.has(object.id));
+  }, [state.present.objects, state.selectedIds]);
+
+  const selectedObject = selectedObjects.length > 0 ? selectedObjects[0] : null;
 
   const isDirty = JSON.stringify(state.present) !== savedSnapshotRef.current;
 
@@ -428,21 +541,31 @@ export function EditorProvider({
     () => ({
       document: state.present,
       objects: state.present.objects,
-      selectedId: state.selectedId,
+      selectedIds: state.selectedIds,
+      selectedObjects,
       selectedObject,
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,
+      canPaste: clipboardCount > 0,
       isDirty,
       dispatch,
       select,
+      toggleSelect,
+      clearSelection,
       commitObject,
+      commitObjects,
       removeObject,
+      removeObjects,
       reorder,
+      reorderMany,
       updateDocument,
       undo,
       redo,
       addShape,
       insertImage,
+      copySelection,
+      paste,
+      duplicate,
       zoom,
       position,
       stageRef,
@@ -466,18 +589,28 @@ export function EditorProvider({
     }),
     [
       state,
+      selectedObjects,
       selectedObject,
+      clipboardCount,
       isDirty,
       dispatch,
       select,
+      toggleSelect,
+      clearSelection,
       commitObject,
+      commitObjects,
       removeObject,
+      removeObjects,
       reorder,
+      reorderMany,
       updateDocument,
       undo,
       redo,
       addShape,
       insertImage,
+      copySelection,
+      paste,
+      duplicate,
       zoom,
       position,
       containerSize,

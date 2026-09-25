@@ -55,6 +55,10 @@ export function EditorToolbar() {
     redo,
     canUndo,
     canRedo,
+    copySelection,
+    paste,
+    canPaste,
+    selectedIds,
     zoom,
     zoomIn,
     zoomOut,
@@ -92,6 +96,21 @@ export function EditorToolbar() {
           icon={Icons.redo}
           onClick={redo}
           disabled={!canRedo}
+        />
+
+        <Separator orientation='vertical' className='mx-1 h-6 data-vertical:self-center' />
+
+        <ToolButton
+          label='复制 (Ctrl+C)'
+          icon={Icons.copy}
+          onClick={copySelection}
+          disabled={selectedIds.length === 0}
+        />
+        <ToolButton
+          label='粘贴 (Ctrl+V)'
+          icon={Icons.clipboard}
+          onClick={paste}
+          disabled={!canPaste}
         />
 
         <div className='ml-auto flex items-center gap-2'>

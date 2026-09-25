@@ -431,6 +431,43 @@ export async function createImageAsset(params: {
 }
 
 /**
+ * 用户上传图片资产（source='upload'）：与 createImageAsset 同构——预生成 id → 转存 OSS → 一次性 insert。
+ * 差异：source='upload'、conversationId=null（上传无归属会话）、content=null（上传图无 prompt）、
+ * 扩展名/mime 由真实图片类型决定（png/jpg/webp，非固定 png）。不改动 createImageAsset（Agent 生成路径不受影响）。
+ */
+export async function createUploadedImageAsset(params: {
+  userId: string;
+  title: string;
+  imageBuffer: Buffer;
+  /** 规范 mime（由魔数判定的真实类型得出） */
+  mime: string;
+  /** OSS 对象扩展名（png/jpg/webp） */
+  ext: string;
+}): Promise<{ id: string; sizeBytes: number }> {
+  const assetId = randomUUID();
+  const storageKey = assetObjectKey(params.userId, assetId, params.ext);
+  await putObject(storageKey, params.imageBuffer, params.mime);
+
+  const sizeBytes = params.imageBuffer.byteLength;
+  const db = getDb();
+  await db.insert(assets).values({
+    id: assetId,
+    userId: params.userId,
+    conversationId: null,
+    sourceAssetId: null,
+    source: 'upload',
+    title: params.title,
+    kind: 'image',
+    content: null,
+    storageKey,
+    mime: params.mime,
+    sizeBytes,
+    status: 'ready'
+  });
+  return { id: assetId, sizeBytes };
+}
+
+/**
  * 视频资产：与 createImageAsset 同构——应用层预生成 assetId → 转存 OSS（.mp4）→ 一次性 insert 全字段。
  * prompt 存 content 列（可溯源/可重试）；I2V 派生视频用 sourceAssetId 记录血缘（指向源图片资产）。
  */
