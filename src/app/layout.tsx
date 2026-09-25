@@ -15,21 +15,22 @@ const META_THEME_COLORS = {
   dark: '#09090b'
 };
 
-const APP_NAME = 'LV999 Dashboard';
+const APP_NAME = 'LV999';
+const APP_FULL_NAME = 'LV999 · AI 原生多模态创作平台';
 const APP_DESCRIPTION =
-  '功能拉满的完全体管理后台，基于 Next.js 16、shadcn/ui 与 Tailwind CSS 构建。';
+  'AI 原生的多模态创作平台：对话创作文本 / 图片 / 视频 / 设计，RAG 知识库语义增强；底层是功能拉满的生产级后台底座，基于 Next.js 16、shadcn/ui 与 Tailwind CSS 构建。';
 
 export const metadata: Metadata = {
   ...(process.env.NEXT_PUBLIC_APP_URL
     ? { metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL) }
     : {}),
   title: {
-    default: APP_NAME,
+    default: APP_FULL_NAME,
     template: `%s | ${APP_NAME}`
   },
   description: APP_DESCRIPTION,
   openGraph: {
-    title: APP_NAME,
+    title: APP_FULL_NAME,
     description: APP_DESCRIPTION,
     siteName: APP_NAME,
     type: 'website',
@@ -38,13 +39,13 @@ export const metadata: Metadata = {
         url: '/lv999-dashboard.png',
         width: 1600,
         height: 800,
-        alt: 'LV999 Dashboard —— 功能拉满的完全体管理后台'
+        alt: 'LV999 —— AI 原生的多模态创作平台'
       }
     ]
   },
   twitter: {
     card: 'summary_large_image',
-    title: APP_NAME,
+    title: APP_FULL_NAME,
     description: APP_DESCRIPTION,
     images: ['/lv999-dashboard.png']
   }

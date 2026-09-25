@@ -6,13 +6,13 @@ This file provides essential information for AI coding agents working on this pr
 
 ## Project Overview
 
-**LV999 Dashboard** is a personal admin dashboard project built with:
+**LV999** is an AI-native multimodal creation platform (Agent creation, design canvas, RAG knowledge base, and a unified asset library) built on top of a production-grade admin dashboard base. Tech stack:
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 5.7
 - **Styling**: Tailwind CSS v4
 - **UI Components**: shadcn/ui (base-nova style, Base UI primitives)
-- **Authentication**: Clerk (with Organizations support)
+- **Authentication**: Clerk (single-user; Organizations feature disabled)
 - **Charts**: Recharts
 - **Containerization**: Docker (Node.js & Bun Dockerfiles)
 - **Package Manager**: Bun (preferred) or npm
@@ -52,8 +52,8 @@ The project follows a feature-based folder structure designed for scalability in
 ### Authentication & Authorization
 
 - Clerk for authentication and user management
-- Clerk Organizations for multi-tenant workspaces
-- Client-side RBAC for navigation visibility
+- Organizations / multi-tenancy are **disabled** — core business is isolated by `userId` (single-admin model)
+- Client-side nav filtering is for UX only; real authorization is server-side `isAdmin` (see "Authentication Patterns")
 
 ### Data & APIs
 
@@ -62,7 +62,7 @@ The project follows a feature-based folder structure designed for scalability in
 - Recharts for analytics/charts
 - Service layer per feature (`api/types.ts` → `api/service.ts` → `api/queries.ts`)
 - Route handlers at `src/app/api/` (for Route Handler or BFF patterns)
-- Mock data in `src/constants/mock-api*.ts` (default, swap via service layer)
+- Real backend is already wired in: Drizzle ORM + PostgreSQL; the agent / design / knowledge / credits features hit DB / OSS / Redis / Alibaba Cloud Model Studio directly
 - API client utility in `src/lib/api-client.ts` (for fetch-based patterns)
 
 ### Development Tools
@@ -81,10 +81,14 @@ The project follows a feature-based folder structure designed for scalability in
 ├── app/                    # Next.js App Router
 │   ├── auth/              # Authentication routes (sign-in, sign-up)
 │   ├── dashboard/         # Dashboard routes
-│   │   ├── overview/      # Parallel routes (@area_stats, @bar_stats, etc.)
-│   │   ├── workspaces/    # Organization management
-│   │   └── profile/       # User profile
-│   ├── api/               # API routes (if any)
+│   │   ├── overview/      # Analytics (parallel routes @area_stats/@bar_stats/@pie_stats/@sales)
+│   │   ├── agent/         # Agent creation (conversations + [conversationId])
+│   │   ├── assets/        # My assets (assets table)
+│   │   ├── design/        # Design canvas (new + [id] editor)
+│   │   ├── knowledge/     # RAG knowledge base
+│   │   ├── admin/         # User management (isAdmin only)
+│   │   └── profile/       # User profile (+ credits)
+│   ├── api/               # Route handlers: agent (chat/conversations/assets/knowledge/…) + admin
 │   ├── layout.tsx         # Root layout with providers
 │   ├── page.tsx           # Landing page
 │   ├── global-error.tsx   # Global error boundary
@@ -100,6 +104,11 @@ The project follows a feature-based folder structure designed for scalability in
 │   └── ...
 │
 ├── features/              # Feature-based modules
+│   ├── agent/             # Agent creation (chat / assets / generation)
+│   ├── design/            # Design canvas (Konva editor)
+│   ├── knowledge/         # RAG knowledge base (pgvector)
+│   ├── credits/           # Credits billing (accounts + ledger)
+│   ├── admin/             # Admin user management
 │   ├── auth/              # Authentication components
 │   ├── overview/          # Dashboard analytics
 │   └── profile/           # Profile management
@@ -127,6 +136,11 @@ The project follows a feature-based folder structure designed for scalability in
     └── themes/            # Individual theme files
 
 /docs                      # Documentation
+│   ├── agent.md           # Agent creation module (architecture / data model / streaming)
+│   ├── design-editor.md   # Design canvas editor
+│   ├── knowledge-base.md  # RAG knowledge base
+│   ├── credits.md         # Credits billing rules
+│   ├── user-management.md # Admin user management & server-side auth
 │   ├── clerk_setup.md     # Clerk configuration guide
 │   ├── nav-rbac.md        # Navigation RBAC documentation
 │   └── themes.md          # Theme customization guide
@@ -249,7 +263,7 @@ See `docs/themes.md` for detailed theming guide.
 
 ### Navigation Configuration
 
-Navigation is organized into groups in `src/config/nav-config.ts`:
+Navigation is organized into groups in `src/config/nav-config.ts` (illustrative shape — the real `label` / `title` values are Chinese UI strings defined in that file):
 
 ```typescript
 import { NavGroup } from '@/types';
@@ -259,29 +273,24 @@ export const navGroups: NavGroup[] = [
     label: 'Overview',
     items: [
       {
-        title: 'Dashboard',
-        url: '/dashboard/overview',
-        icon: 'dashboard',
-        shortcut: ['d', 'd'],
-        items: [],
-        access: { requireOrg: true } // RBAC check
+        title: 'Agent Creation',
+        url: '/dashboard/agent',
+        icon: 'sparkles',
+        shortcut: ['a', 'a'],
+        items: []
       }
     ]
   }
 ];
 ```
 
-### Access Control Properties
+### Access Control Properties (vestigial)
 
-- `requireOrg: boolean` - Requires active organization
-- `permission: string` - Requires specific permission
-- `role: string` - Requires specific role
-- `plan: string` - Requires specific subscription plan
-- `feature: string` - Requires specific feature
+The `NavItem.access` field and its properties (`requireOrg` / `permission` / `role` / `plan` / `feature`) still exist in `src/types/index.ts` for backward compatibility, **but org-based checks no longer resolve**: `use-nav.ts` hardcodes the access context to `hasOrg = false`, so any item carrying `requireOrg` / `permission` / `role` is **hidden** in the current single-user deployment. Prefer leaving `access` off — show admin-only entries via the server-side `isAdmin` path below instead.
 
 ### Client-Side Filtering
 
-The `useFilteredNavItems()` hook in `src/hooks/use-nav.ts` filters navigation client-side using Clerk's `useOrganization()` and `useUser()` hooks. This is for UX only - actual security checks must happen server-side.
+The `useFilteredNavGroups()` / `useFilteredNavItems()` hooks in `src/hooks/use-nav.ts` filter navigation synchronously on the client (UX only — no `useOrganization` / `useUser` calls, which would re-trigger Clerk's "Organizations feature required" popup). Real security is enforced server-side.
 
 ---
 
@@ -289,18 +298,21 @@ The `useFilteredNavItems()` hook in `src/hooks/use-nav.ts` filters navigation cl
 
 ### Protected Routes
 
-Dashboard routes use Clerk's middleware pattern. Pages that require organization:
+Dashboard routes are behind Clerk's middleware. For admin-only pages / endpoints, enforce the server-side whitelist `isAdmin` (`src/lib/admin.ts`, backed by `ADMIN_USER_IDS`). This is the ONLY security boundary — client-side entry visibility is UX.
 
 ```tsx
 import { auth } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
+import { isAdmin } from '@/lib/admin';
 
-export default async function Page() {
-  const { orgId } = await auth();
-  if (!orgId) redirect('/dashboard/workspaces');
+export default async function AdminPage() {
+  const { userId } = await auth();
+  if (!isAdmin(userId)) redirect('/dashboard/overview');
   // ...
 }
 ```
+
+In route handlers, return `403` for non-admins. See [docs/user-management.md](./docs/user-management.md).
 
 ### Plan/Feature Protection
 
@@ -348,7 +360,6 @@ src/features/<name>/api/
 | **Route Handlers + ORM**                           | `service.ts` calls `/api/` routes via `apiClient`, route handlers call ORM                  |
 | **BFF** (Next.js proxies to Laravel/Go/etc.)       | `service.ts` calls `/api/` routes via `apiClient`, route handlers proxy to external backend |
 | **Direct external API** (frontend-only)            | `service.ts` calls external URL via `fetch()`                                               |
-| **Mock** (default)                                 | `service.ts` calls in-memory fake data stores                                               |
 
 Route handlers at `src/app/api/` are ready for patterns 2 and 3. `src/lib/api-client.ts` provides a typed `fetch` wrapper.
 
@@ -503,7 +514,7 @@ Both use `output: 'standalone'` in `next.config.ts`. Pass `NEXT_PUBLIC_*` vars a
 ### Build Considerations
 
 - Output: `standalone` (optimized for Docker/self-hosting)
-- Images: Configured for `api.slingacademy.com`, `img.clerk.com`, `clerk.com`
+- Images: `remotePatterns` configured for `img.clerk.com` and `clerk.com`
 
 ---
 
@@ -571,7 +582,7 @@ export const Icons = {
 ### Adding a New Feature (End-to-End)
 
 1. Create `src/features/<name>/api/types.ts` — response types, filter types, mutation payloads
-2. Create `src/features/<name>/api/service.ts` — data access functions (mock by default)
+2. Create `src/features/<name>/api/service.ts` — data access functions (backed by real services: Drizzle/PostgreSQL, OSS, Alibaba Cloud Model Studio, Redis)
 3. Create `src/features/<name>/api/queries.ts` — query key factory + `queryOptions`
 4. Create page route: `src/app/dashboard/<name>/page.tsx`
 5. Create feature components in `src/features/<name>/components/`
@@ -618,8 +629,8 @@ See "Theming System" section above or `docs/themes.md`.
 
 **Navigation items not showing**
 
-- Check `access` property in nav config
-- Verify user has required org/permission/role
+- Items left without `access` always show; anything with `requireOrg`/`permission`/`role` is hidden (org context is disabled)
+- Admin-only entries live in the account dropdown and are gated server-side by `isAdmin` / `ADMIN_USER_IDS`, not by nav `access`
 
 ---
 
@@ -646,4 +657,4 @@ See "Theming System" section above or `docs/themes.md`.
 9. **Page headers** - Always use `PageContainer` props (`pageTitle`, `pageDescription`, `pageHeaderAction`) for page headers. Never import `<Heading>` manually in pages — `PageContainer` handles that internally.
 10. **Forms** - Use `useAppForm` from `@/lib/form` with `form.AppField` rendering the shared field components (`field.TextField`, `field.SelectField`, …) from `@/components/forms/fields`. Each component follows the official shadcn TanStack Form anatomy; drop down to raw `form.Field` render props for one-off custom fields. Never use `useState` inside a render prop — extract stateful controls into components.
 11. **Button loading** - Use `<Button isLoading={isPending}>` for loading states. Uses CSS Grid overlap trick for zero layout shift. When `isLoading` is not passed, button behaves as default shadcn. `SubmitButton` in forms handles this automatically via form `isSubmitting` state.
-12. **Data layer** - Always go through the service layer: `types.ts` → `service.ts` → `queries.ts`. Components import types from `types.ts`, functions from `service.ts`, query options from `queries.ts`. Never import from `@/constants/mock-api*` directly in components.
+12. **Data layer** - Always go through the service layer: `types.ts` → `service.ts` → `queries.ts`. Components import types from `types.ts`, functions from `service.ts`, query options from `queries.ts`. Services hit real backends (Drizzle/PostgreSQL, OSS, Alibaba Cloud Model Studio, Redis).

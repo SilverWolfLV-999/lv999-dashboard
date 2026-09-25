@@ -61,14 +61,14 @@ export default function AppSidebar({ isAdmin = false }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size='lg'
-              render={<Link href='/dashboard/overview' aria-label='LV999 Dashboard' />}
+              render={<Link href='/dashboard/overview' aria-label='LV999' />}
             >
               <div className='bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg'>
                 <Icons.logo className='size-4' />
               </div>
               <div className='grid flex-1 text-left text-sm leading-tight'>
-                <span className='truncate font-semibold'>LV999 Dashboard</span>
-                <span className='text-muted-foreground truncate text-xs'>管理后台</span>
+                <span className='truncate font-semibold'>LV999</span>
+                <span className='text-muted-foreground truncate text-xs'>AI 创作平台</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -10,8 +10,8 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 
 export const metadata: Metadata = {
-  title: 'LV999 Dashboard',
-  description: '功能拉满的完全体管理后台',
+  title: 'LV999',
+  description: 'AI 原生的多模态创作平台',
   robots: {
     index: false,
     follow: false

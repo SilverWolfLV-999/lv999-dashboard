@@ -1,23 +1,23 @@
-# LV999 Dashboard
+# LV999 · AI 原生多模态创作平台
 
-> **LV999** —— lv = level。功能拉满、什么都有、完全体的管理后台。
+> **LV999** —— lv = level。功能拉满、什么都有、完全体的多模态创作工作台。
 
-一个全功能的管理后台仪表盘：认证、权限、数据表格、表单、图表、主题……全部端到端可用。不是静态演示，而是一个能直接长出真实业务的地基——目前已在其上长出一个生产级的 **AI Agent 创作模块**（对话创作、专家模式、文生图 / 图生图、文生视频 / 图生视频、资产沉淀）、一个 **设计画布编辑器**（Konva 可视化创作）与一个 **RAG 知识库**（pgvector 语义检索增强）。
+一个 AI 原生的多模态创作平台：用自然语言对话创作 **文本 / 图片 / 视频 / 设计**，以 **RAG 知识库**做语义增强，全部产出沉淀为可管理的资产——已接入真实后端（PostgreSQL + 对象存储 + Redis + 大模型）。它的底层是一套功能拉满的生产级**后台底座**（认证、权限、数据表格、表单、图表、主题……端到端可用），既能支撑本平台自身，也能直接长出其他真实业务。
 
-![LV999 Dashboard 预览](./public/lv999-dashboard.png)
+![LV999 预览](./public/lv999-dashboard.png)
 
 ## 项目简介
 
-LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、生产级、快速起步：
+LV999 定位为 **AI 原生创作平台 + 生产级后台底座**：创作能力是产品内核，后台底座让它可以快速起步、持续扩展真实业务：
 
-- **功能全部可运行**：数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证端到端打通。
+- **四大创作引擎全部可运行**：文本 / 图片 / 视频 / 设计从生成到沉淀的闭环真实打通——数据表格真实地搜索 / 筛选 / 排序 / 分页；表单真实地校验、提交并失效缓存；认证端到端可用。
 - **工程模式生产级**：数据层遵循 TanStack Query 官方 SSR 模式，按 feature 组织模块，每个模块的 `api/service.ts` 是接入真实后端时唯一需要替换的文件。
-- **AI Agent 创作模块已落地**：自然语言对话 → 生成 Markdown / HTML / 图片 / 视频作品并沉淀为可管理的资产；已接入真实后端（PostgreSQL + 对象存储 + Redis + 大模型），非 Mock，详见 [docs/agent.md](./docs/agent.md)。
+- **AI Agent 创作已落地**：自然语言对话 → 生成 Markdown / HTML / 图片 / 视频作品并沉淀为可管理的资产，详见 [docs/agent.md](./docs/agent.md)。
 - **专家模式（技能系统）**：会话级选定一个专家技能（电商套图 / 小红书图文 / 通用创作），Agent 按其人设与工作流持续协作。
 - **视频产物**：文生视频 / 图生视频（百炼 `wan3.0-video`），视频存 OSS、封面经 OSS 原生截帧，产物沉淀为 `video` 资产，详见 [docs/video-generation.md](./docs/video-generation.md)。
 - **设计画布编辑器**：基于 Konva 的 Canva/Figma 式画布，摆放文字 / 图形 / 图片（可引用 Agent 生成的图片资产），导出 PNG 并沉淀为可重新编辑的 `design` 资产，详见 [docs/design-editor.md](./docs/design-editor.md)。
 - **RAG 知识库**：文本知识切分、向量化存入 pgvector，Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源，详见 [docs/knowledge-base.md](./docs/knowledge-base.md)。
-- **开箱即用**：后台骨架内置 Mock 数据，配好 Clerk 密钥即可跑通；Agent 创作模块另需数据库 / 模型 / 存储 / Redis 配置（见 [docs/agent.md](./docs/agent.md)）。
+- **端到端真实**：各功能页直连真实后端；至少配好 Clerk 密钥 + `DATABASE_URL`，总览 / 资产 等页即可端到端运行，创作能力另需模型 / 存储 / Redis（见 [docs/agent.md](./docs/agent.md)）。
 
 ## 功能特性
 
@@ -88,7 +88,7 @@ bun install
 
 # 2. 配置环境变量
 cp env.example.txt .env.local
-# 然后填入 Clerk 密钥（见下方说明）
+# 然后至少填入 Clerk 密钥与 DATABASE_URL（总览 / 资产等页直连数据库，缺一不可，见下方说明）
 
 # 3. 启动开发服务器
 bun run dev
@@ -105,12 +105,12 @@ bun run dev
 | `NEXT_PUBLIC_APP_URL` | 应用公开地址（用于 metadataBase，本地为 `http://localhost:3000`） |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` 等 | 登录 / 注册与重定向地址（默认值已够用） |
 | `BUILD_STANDALONE` | Docker / 自托管时设为 `"true"`，启用 standalone 输出 |
-| `DATABASE_URL` | PostgreSQL 连接串（Agent 模块） |
+| `DATABASE_URL` | PostgreSQL 连接串（总览 / 资产 / Agent / 知识库 / 设计等数据层均需，未配会报错） |
 | `DASHSCOPE_API_KEY` | 阿里云百炼 API Key（对话与图片模型） |
 | `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS（图片等二进制资产） |
 | `REDIS_URL` | Redis 连接串（流恢复 / 停止信号 / 限流，需 pub/sub） |
 
-后台骨架仅需 Clerk 密钥即可运行；`DATABASE_URL` 及之后的变量仅 Agent 创作模块需要。完整变量说明见 `env.example.txt`；Clerk 的完整配置见 [docs/clerk_setup.md](./docs/clerk_setup.md)；Agent 模块的完整配置与架构见 [docs/agent.md](./docs/agent.md)。
+访问后台至少需要 Clerk 密钥 + `DATABASE_URL`（总览 / 资产等后台页直连数据库，未配会报错）；`DASHSCOPE_API_KEY` 及其后的 OSS / `REDIS_URL` 仅创作能力（Agent 模块）需要。完整变量说明见 `env.example.txt`；Clerk 的完整配置见 [docs/clerk_setup.md](./docs/clerk_setup.md)；Agent 模块的完整配置与架构见 [docs/agent.md](./docs/agent.md)。
 
 ### 常用命令
 
@@ -144,14 +144,13 @@ src/
 │   ├── forms/              # 表单字段组件（Field anatomy）
 │   ├── themes/             # 主题系统
 │   └── kbar/               # ⌘K 命令面板
-├── features/               # 按功能划分的模块（agent、design、knowledge、admin、auth、overview、profile）
+├── features/               # 按功能划分的模块（agent、design、knowledge、credits、admin、auth、overview、profile）
 │   └── <name>/
 │       ├── api/            # types.ts → service.ts → queries.ts
 │       ├── components/
 │       ├── schemas/        # Zod 校验
 │       └── constants/      # 筛选 / 选项配置
-├── config/                 # 导航（含 RBAC）、Infobar、表格配置
-├── constants/              # Mock 数据
+├── config/                 # 导航配置（nav-config，含 RBAC 声明）、表格配置（data-table）
 ├── hooks/                  # 自定义 hooks
 ├── lib/                    # 工具（query-client、searchparams、api-client、oss、redis 等）
 │   └── db/                 # Drizzle schema（含 pgvector 向量列）与连接（getDb）
