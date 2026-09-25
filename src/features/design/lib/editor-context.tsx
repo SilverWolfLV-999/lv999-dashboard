@@ -446,6 +446,11 @@ export function EditorProvider({
       ) {
         return;
       }
+      // 弹层打开时整体让位（插入图片 / AI 生成 / AI 修改 / 命令面板，均为 role='dialog'）：
+      // 焦点在弹层内时 Delete、方向键、Ctrl+C/V/D 不应改动画布（否则选中对象会被误删）
+      if (document.querySelector('[role="dialog"]')) {
+        return;
+      }
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (mod) {

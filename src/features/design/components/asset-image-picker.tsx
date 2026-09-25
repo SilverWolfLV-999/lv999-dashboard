@@ -15,7 +15,7 @@ import { Icons } from '@/components/icons';
 import { ApiError } from '@/lib/api-client';
 import { uploadImageMutation } from '../api/mutations';
 import { assetsQueryOptions } from '../api/queries';
-import { assetRawUrl } from '../hooks/use-asset-image';
+import { assetRawUrl, loadNaturalSize } from '../hooks/use-asset-image';
 import { useEditor } from '../lib/editor-context';
 import type { Asset } from '@/features/agent/api/types';
 
@@ -45,18 +45,6 @@ function resolveUploadError(error: unknown): string {
     if (error.status === 429) return '上传过于频繁，请稍后再试';
   }
   return '上传失败，请稍后重试';
-}
-
-/** sharp 未返回尺寸时的回退：经同源 /raw 加载读 naturalWidth/Height（失败返回 null） */
-function loadNaturalSize(assetId: string): Promise<{ width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    const image = new window.Image();
-    image.addEventListener('load', () =>
-      resolve({ width: image.naturalWidth, height: image.naturalHeight })
-    );
-    image.addEventListener('error', () => resolve(null));
-    image.src = assetRawUrl(assetId);
-  });
 }
 
 export function AssetImagePicker({ open, onOpenChange }: AssetImagePickerProps) {

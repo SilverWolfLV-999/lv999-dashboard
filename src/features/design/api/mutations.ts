@@ -2,6 +2,7 @@ import { mutationOptions } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { getQueryClient } from '@/lib/query-client';
 import { agentKeys } from '@/features/agent/api/queries';
+import type { GenerateImageRequest } from '@/features/agent/api/types';
 import type { CreateDesignRequest, UpdateDesignRequest, UploadImageResponse } from './types';
 
 /** 资产域失效：列表 + 详情（保存后刷新「我的资产」缩略/标题与预览） */
@@ -42,5 +43,22 @@ export const uploadImageMutation = mutationOptions({
       body: form
     });
   },
+  onSuccess: invalidateAssets
+});
+
+/**
+ * 画布内 AI 生图（直连 T2I）：POST /api/agent/assets/generate → { id }。
+ * 生成耗时 10-60s（端点 maxDuration=300，不提供 abort）；成功后失效资产域，
+ * 「我的资产」即出现新图（source='agent'、content=prompt）。
+ *
+ * 画布内 AI 改图（I2I）不在此重复定义：直接复用 agent 域的
+ * `editImageAssetMutation`（同一端点 `/agent/assets/[id]/edit` 与同一失效逻辑）。
+ */
+export const aiGenerateImageMutation = mutationOptions({
+  mutationFn: (values: GenerateImageRequest) =>
+    apiClient<{ id: string }>('/agent/assets/generate', {
+      method: 'POST',
+      body: JSON.stringify(values)
+    }),
   onSuccess: invalidateAssets
 });

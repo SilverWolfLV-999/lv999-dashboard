@@ -8,10 +8,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Icons, type Icon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { useEditor } from '../lib/editor-context';
+import { AiGenerateDialog } from './ai-generate-dialog';
 import { AssetImagePicker } from './asset-image-picker';
 
 /**
- * 顶部工具栏：标题、加图形/文字/图片、撤销重做、缩放、导出、保存。
+ * 顶部工具栏：标题、加图形/文字/图片、AI 生图、撤销重做、缩放、导出、保存。
  * 图标按钮统一用 ToolButton（Tooltip + aria-label，满足可达性）。
  */
 
@@ -69,6 +70,7 @@ export function EditorToolbar() {
     isDirty
   } = useEditor();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
 
   return (
     <TooltipProvider>
@@ -87,6 +89,11 @@ export function EditorToolbar() {
         <ToolButton label='圆形' icon={Icons.circle} onClick={() => addShape('circle')} />
         <ToolButton label='文字' icon={Icons.text} onClick={() => addShape('text')} />
         <ToolButton label='插入图片' icon={Icons.media} onClick={() => setPickerOpen(true)} />
+        <ToolButton
+          label='AI 生成图片'
+          icon={Icons.sparkles}
+          onClick={() => setAiGenerateOpen(true)}
+        />
 
         <Separator orientation='vertical' className='mx-1 h-6 data-vertical:self-center' />
 
@@ -139,6 +146,7 @@ export function EditorToolbar() {
       </div>
 
       <AssetImagePicker open={pickerOpen} onOpenChange={setPickerOpen} />
+      <AiGenerateDialog open={aiGenerateOpen} onOpenChange={setAiGenerateOpen} />
     </TooltipProvider>
   );
 }

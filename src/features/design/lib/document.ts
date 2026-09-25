@@ -108,6 +108,60 @@ export function createImageObject(
   };
 }
 
+/** 图片对象「换图」补丁（AI 改图替换当前对象用）；结构上即 ObjectPatch 的子集 */
+export interface ImageReplacePatch {
+  assetId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * AI 改图「替换当前对象」的补丁：只换 assetId 引用（Konva 铁律，不存字节），
+ * 并按新图自然尺寸**等比适配原外接框**（新图比例可能与源不同，绝不拉伸变形），
+ * 视觉中心保持不变（含旋转：Konva 绕节点原点 (x,y) 旋转，故按旋转后的中心反推新原点）。
+ *
+ * natural 缺省（/raw 尚未就绪）时仅换引用、沿用原框：未指定输出比例的 I2I 延续源图构图，
+ * 比例通常与源一致，沿用原框比强行按正方形适配更不易变形。
+ */
+export function imageReplacePatch(
+  object: ImageObject,
+  assetId: string,
+  natural: { width: number; height: number } | null
+): ImageReplacePatch {
+  if (!natural || natural.width <= 0 || natural.height <= 0) {
+    return { assetId, x: object.x, y: object.y, width: object.width, height: object.height };
+  }
+  // contain：缩放至完全落入原外接框（不裁切、不变形）
+  const scale = Math.min(object.width / natural.width, object.height / natural.height);
+  const width = Math.max(1, Math.round(natural.width * scale));
+  const height = Math.max(1, Math.round(natural.height * scale));
+
+  const rad = ((object.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  // 旋转后的局部中心偏移（y 轴向下，正角为顺时针，与 Konva 一致）
+  const oldOffset = { x: object.width / 2, y: object.height / 2 };
+  const newOffset = { x: width / 2, y: height / 2 };
+  const rotate = (offset: Point): Point => ({
+    x: offset.x * cos - offset.y * sin,
+    y: offset.x * sin + offset.y * cos
+  });
+  const center = {
+    x: object.x + rotate(oldOffset).x,
+    y: object.y + rotate(oldOffset).y
+  };
+  const placed = rotate(newOffset);
+  return {
+    assetId,
+    x: center.x - placed.x,
+    y: center.y - placed.y,
+    width,
+    height
+  };
+}
+
 /** 层级重排：forward 上移一层 / backward 下移一层（数组末尾为最上层） */
 export function reorderObject(
   objects: DesignObject[],

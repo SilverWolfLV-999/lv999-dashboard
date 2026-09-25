@@ -28,6 +28,8 @@ export type ObjectPatch = Partial<{
   height: number;
   radius: number;
   text: string;
+  /** 图片资产引用（仅 image 对象有意义）：AI 改图「替换当前对象」时改指新资产，仍不存字节 */
+  assetId: string;
 }>;
 
 /** 批量更新的一项（id + 局部补丁） */

@@ -22,6 +22,24 @@ export function assetRawUrl(assetId: string): string {
   return `/api/agent/assets/${assetId}/raw`;
 }
 
+/**
+ * 一次性读取图片资产的自然尺寸（经同源 /raw 代理）。
+ * 用于「插入 / 替换前按真实比例等比缩放」：上传响应未带尺寸、AI 生成端点只返回 { id }
+ * 等场景。加载失败返回 null（调用方回退：插入按正方形、替换沿用原框）。
+ */
+export function loadNaturalSize(
+  assetId: string
+): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const image = new window.Image();
+    image.addEventListener('load', () =>
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    );
+    image.addEventListener('error', () => resolve(null));
+    image.src = assetRawUrl(assetId);
+  });
+}
+
 export function useAssetImage(assetId: string | null): AssetImageState {
   const [state, setState] = useState<AssetImageState>({
     image: null,

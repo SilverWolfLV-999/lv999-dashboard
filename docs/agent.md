@@ -201,7 +201,8 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 - **下载**（[`assets/[id]/download`](../src/app/api/agent/assets/[id]/download/route.ts)）：有 `storageKey` → 302 跳转带附件名的短期签名 URL（TTL 300s）；文本资产直接返回 `content`。
 - **删除**：删 DB 行的同时顺带删 OSS 对象（失败仅告警不阻塞）。
 - **批量删除**（[`assets/batch-delete`](../src/app/api/agent/assets/batch-delete/route.ts)）：单次最多 100 个 uuid，逐个走 `deleteAsset`（含所有权校验与 OSS 清理）；不存在的 id 静默跳过，返回实际删除计数；全部未命中时 404。限流 10 次/分。
-- **直连图片编辑**（[`assets/[id]/edit`](../src/app/api/agent/assets/[id]/edit/route.ts)）：图片资产行操作「继续修改」直连 I2I（不经聊天），核心流程与聊天内 `editImageAsset` 工具复用（[`image-edit.ts`](../src/features/agent/api/image-edit.ts) 的 `editImageAssetCore`）；产出派生资产（`sourceAssetId` 记录血缘），返回新资产 id。限流 20 次/分（I2I 是付费模型调用 ≈0.20 元/次）。
+- **直连图片编辑**（[`assets/[id]/edit`](../src/app/api/agent/assets/[id]/edit/route.ts)）：图片资产行操作「继续修改」与设计画布「AI 修改」直连 I2I（不经聊天），核心流程与聊天内 `editImageAsset` 工具复用（[`image-edit.ts`](../src/features/agent/api/image-edit.ts) 的 `editImageAssetCore`）；产出派生资产（`sourceAssetId` 记录血缘），返回新资产 id。限流 20 次/分（I2I 是付费模型调用 ≈0.20 元/次）。
+- **直连图片生成**（[`assets/generate`](../src/app/api/agent/assets/generate/route.ts)）：设计画布「AI 生成图片」直连 T2I（不经聊天），与聊天内 `createImageAsset` 工具同核（`generateImage` + `createImageAsset`）；产出 `conversationId=null`、`content=prompt`、`source='agent'` 的图片资产（title 缺省按 prompt 截断），返回新资产 id。限流 scope `image-generate` 20 次/分，`maxDuration=300`。
 
 ---
 
@@ -271,6 +272,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | PATCH | `/api/agent/assets/[id]` | 更新 design 资产（归属且 `kind==='design'`）|
 | POST | `/api/agent/assets/[id]/favorite` | 收藏 / 取消收藏（任意 kind，限流 60/分）|
 | POST | `/api/agent/assets/[id]/edit` | 直连图片编辑 I2I（不经聊天，限流 20/分，`maxDuration=300`）|
+| POST | `/api/agent/assets/generate` | 直连图片生成 T2I（设计画布「AI 生成图片」，限流 scope `image-generate` 20/分，`maxDuration=300`）——详见 design-editor.md |
 | GET | `/api/agent/assets/[id]/download` | 下载（image / design / video 有 `storageKey` 走 302 签名 URL，扩展名映射 video→mp4；文本直接返回）|
 | GET | `/api/agent/assets/[id]/raw` | 资产字节同源代理（供设计画布加载图片规避 canvas 跨域污染；带 `?snapshot=1` 且 video 时回 OSS 截帧封面）|
 | POST | `/api/agent/assets/batch-delete` | 批量删除（单次 ≤100 uuid，限流 10/分）|
@@ -285,8 +287,9 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 ### 错误信封（API 契约硬化 v1）
 
-服务端可预期错误一律通过 [`apiError(status, code, message, headers?)`](../src/lib/api-error.ts) 返回 `{ error: { code, message } }`；`code` 取值：`unauthorized` / `invalid_json` / `invalid_request` / `not_found` / `payload_too_large` / `too_many_requests` / `insufficient_credits` / `not_implemented`。客户端 `api-client.ts` 的 `ApiError` 解析信封并暴露 `status` 与 `code`。
+服务端可预期错误一律通过 [`apiError(status, code, message, headers?)`](../src/lib/api-error.ts) 返回 `{ error: { code, message } }`；`code` 取值：`unauthorized` / `invalid_json` / `invalid_request` / `not_found` / `payload_too_large` / `too_many_requests` / `insufficient_credits` / `generation_failed` / `not_implemented`。客户端 `api-client.ts` 的 `ApiError` 解析信封并暴露 `status` 与 `code`。
 
+- **例外：`generation_failed`（502）的 `message` 为中文**——图片/视频生成失败原因（内容审核拒绝 / 上游限流 / 鉴权 / 参数 / 超时）已由 `GenerationError` 映射为用户可读文案，端点直接透传作为单一来源，客户端按 `code` 识别后原样展示（见 design 域的 `resolveAiImageError`）；其余 code 的 `message` 仍为简短英文。
 - **路径参数**：所有 `[id]` 路由先用 [`isUuid`](../src/lib/utils.ts) 预校验，非法格式返回 404 `not_found`（避免直达 DB 产生 500）。
 - **限流**：429 响应携带 `Retry-After` 头。
 
@@ -302,14 +305,15 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | `knowledge` | 30 次 | 60s / 用户 | 知识库文档新增 |
 | `favorite` | 60 次 | 60s / 用户 | 收藏切换（轻量 DB 写）|
 | `image-edit` | 20 次 | 60s / 用户 | 直连 I2I（付费模型调用 ≈0.20 元/次）|
+| `image-generate` | 20 次 | 60s / 用户 | 直连 T2I（设计画布 AI 生图，付费模型调用 ≈0.18 元/张）|
 | `batch-delete` | 10 次 | 60s / 用户 | 批量删除（单次 ≤100 个）|
 | `video` | 5 次 | 60s / 用户 | 视频生成（成本高于图片）——**在工具 `execute` 内校验**，命中抛中文错误由视频卡片展示（MVP 视频仅走流式 chat 路由，无法返回 HTTP 429）|
 
-请求体上限 `MAX_REQUEST_BYTES = 4MB`（chat / stop / favorite / image-edit / batch-delete 共用）；chat 另限 `MAX_MESSAGES=200`、`MAX_PARTS_PER_MESSAGE=500`。
+请求体上限 `MAX_REQUEST_BYTES = 4MB`（chat / stop / favorite / image-edit / image-generate / batch-delete 共用）；chat 另限 `MAX_MESSAGES=200`、`MAX_PARTS_PER_MESSAGE=500`。
 
 ### Credits 计费（402 余额不足）
 
-所有付费 API 入口（对话 / 图片工具 / 直连图片编辑 / 视频工具 / 知识库摄取）在发起上游调用前经 `checkBalance`（`balance > 0`）拦截，余额不足返回 **402 `insufficient_credits`**（工具入口抛中文错误由卡片展示）。扣费按真实 usage「发起后按结果扣」：对话在流 `onEnd` 按累计 token 结算（`usageSink` 经 `onStepEnd` 桥接）；图片/视频经 `chargeOnGenerationResult`（成功/abort/超时/下载失败照扣，鉴权/参数/限流/**内容审核拒绝**不扣）；知识库摄取按 embedding tokens。完整计费规则、定价与数据模型见 [docs/credits.md](./credits.md)。
+所有付费 API 入口（对话 / 图片工具 / 直连图片生成与编辑 / 视频工具 / 知识库摄取）在发起上游调用前经 `checkBalance`（`balance > 0`）拦截，余额不足返回 **402 `insufficient_credits`**（工具入口抛中文错误由卡片展示）。扣费按真实 usage「发起后按结果扣」：对话在流 `onEnd` 按累计 token 结算（`usageSink` 经 `onStepEnd` 桥接）；图片/视频经 `chargeOnGenerationResult`（成功/abort/超时/下载失败照扣，鉴权/参数/限流/**内容审核拒绝**不扣）；知识库摄取按 embedding tokens。完整计费规则、定价与数据模型见 [docs/credits.md](./credits.md)。
 
 ---
 

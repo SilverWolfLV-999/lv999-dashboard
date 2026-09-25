@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { apiError } from '@/lib/api-error';
 import { isUuid } from '@/lib/utils';
 import { checkRateLimit } from '@/features/agent/api/rate-limit';
+import { GenerationError } from '@/features/agent/api/generation-error';
 import { ImageEditError, editImageAssetCore } from '@/features/agent/api/image-edit';
 import { MAX_REQUEST_BYTES } from '@/features/agent/constants/limits';
 import { editImageRequestSchema } from '@/features/agent/api/types';
@@ -99,7 +100,13 @@ export async function POST(request: Request, context: RouteContext) {
       }
       return apiError(404, 'not_found', 'Source image asset not found');
     }
-    // 生成/下载/转存失败（image-generation.ts 已映射为用户可读中文并记录日志）
+    if (error instanceof GenerationError) {
+      // 生成失败原因（审核拒绝/限流/鉴权/超时）已由 image-generation.ts 映射为用户可读中文，
+      // 以 generation_failed 透传（见 lib/api-error.ts 约定），与 T2I 直连端点一致
+      console.error('[agent] direct image edit failed', { assetId: id, error: error.message });
+      return apiError(502, 'generation_failed', error.message);
+    }
+    // 转存/落库等本地故障（非 billable，不扣费）
     console.error('[agent] direct image edit failed', { assetId: id, error });
     return apiError(502, 'invalid_request', 'Image generation failed');
   }

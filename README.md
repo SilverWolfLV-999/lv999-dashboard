@@ -24,7 +24,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **AI Agent 创作**：自然语言对话驱动的内容创作工作台（`ToolLoopAgent`）；可生成 Markdown / HTML 文本作品、文生图 / 图生图（I2I）图片与文生视频 / 图生视频（I2V）短视频；基于 `resumable-stream` 的可恢复 SSE 流（刷新 / 切回自动重连），支持跨实例停止生成
 - **专家模式（技能系统）**：会话级选定一个专家技能（电商套图设计 / 小红书图文 / 通用创作），Agent 按其人设与工作流持续协作；技能注册表代码内定义，增删只改一个文件
 - **对话内资产引用**：输入区「引用资产」按钮从「我的资产」挑选若干资产，提交时拼接 `[引用资产]` 机器可读块，让模型确定性地拿到 assetId 无需再检索
-- **设计画布**：基于 Konva 的 Canva/Figma 式画布编辑器；摆放文字 / 图形 / 图片（引用 Agent 生成的图片资产**或本地上传**），选中/移动/缩放/旋转、**多选（Shift）/ 复制粘贴（Ctrl+C/V/D）/ 拖拽吸附对齐（参考线）/ 批量对齐**、撤销重做、导出 PNG，产物沉淀为可重新编辑的 `design` 资产
+- **设计画布**：基于 Konva 的 Canva/Figma 式**AI 原生**画布编辑器；摆放文字 / 图形 / 图片（引用 Agent 生成的图片资产**或本地上传**），**画布内直接 AI 生图（T2I）/ AI 改图（I2I，替换当前对象或新增）**，选中/移动/缩放/旋转、**多选（Shift）/ 复制粘贴（Ctrl+C/V/D）/ 拖拽吸附对齐（参考线）/ 批量对齐**、撤销重做、导出 PNG，产物沉淀为可重新编辑的 `design` 资产
 - **RAG 知识库**：把文本知识切分、向量化存入 pgvector（百炼 `text-embedding-v4` + 阿里云 RDS）；支持**上传 PDF / Word / PPT / Excel / Markdown 等文件**（`@firecrawl/anydoc` 解析为结构化 Markdown）；Agent 对话中经 `knowledgeSearch` 按语义检索相关片段作答/创作并标注来源
 - **我的资产**：Agent 与设计画布的产出统一沉淀为可管理资产（markdown / html / image / design / video 五类）；复用数据表格模式，支持按类型筛选 / 搜索 / 预览 / 下载 / 删除 / **收藏** / **批量删除**，图片 / 视频经 OSS 签名 URL 访问（视频列表显示 OSS 截帧封面）
 - **直连图片编辑**：图片资产行操作「继续修改」直连 I2I（不经聊天），产出派生资产并记录血缘
@@ -183,7 +183,7 @@ queries.ts  # React Query options + 查询键工厂（稳定不变）
 
 ### 设计画布编辑器
 
-基于 Konva + react-konva 的 Canva/Figma 式画布（纯客户端孤岛，`next/dynamic({ ssr: false })` 挂载）。文档为自持有的可序列化 JSON，作为 `kind='design'` 资产落库（`content` 存文档、`storageKey` 存导出 PNG 预览），**不新增数据库表**。图片对象只存 `assetId` 引用（可引用 Agent 生成资产或**本地上传**的 `source='upload'` 图片），经同源 `/raw` 代理加载以规避画布跨域污染。编辑器支持**多选（canvas 层共享 Transformer 单例）、复制粘贴（会话内剪贴板）、拖拽吸附对齐 + 参考线**（纯前端，零新依赖）。完整架构、文档模型、导出与保存链路见 [docs/design-editor.md](./docs/design-editor.md)。
+基于 Konva + react-konva 的 Canva/Figma 式画布（纯客户端孤岛，`next/dynamic({ ssr: false })` 挂载）。文档为自持有的可序列化 JSON，作为 `kind='design'` 资产落库（`content` 存文档、`storageKey` 存导出 PNG 预览），**不新增数据库表**。图片对象只存 `assetId` 引用（可引用 Agent 生成资产或**本地上传**的 `source='upload'` 图片），经同源 `/raw` 代理加载以规避画布跨域污染。编辑器支持**多选（canvas 层共享 Transformer 单例）、复制粘贴（会话内剪贴板）、拖拽吸附对齐 + 参考线**（纯前端，零新依赖）。**AI 原生**：画布内直接「AI 生成图片」（直连 T2I，新端点 `/api/agent/assets/generate`）与「AI 修改选中图片」（复用 I2I 端点，替换当前对象或作为新对象插入），产出即时插入/替换并沉淀为资产、走 Credits 计费，全部复用 agent 域生成能力（零新依赖）。完整架构、文档模型、导出与保存链路见 [docs/design-editor.md](./docs/design-editor.md)。
 
 ### RAG 知识库
 

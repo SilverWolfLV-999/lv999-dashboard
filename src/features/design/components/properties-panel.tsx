@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Icons, type Icon } from '@/components/icons';
@@ -9,10 +10,11 @@ import { CANVAS_PRESETS, FILL_SWATCHES, FONT_SIZE_PRESETS } from '../constants/c
 import type { ObjectPatch, ObjectPatchEntry } from '../hooks/use-editor-reducer';
 import { objectBounds, unionBox } from '../lib/document';
 import { useEditor } from '../lib/editor-context';
+import { AiEditDialog } from './ai-edit-dialog';
 
 /**
  * 右侧属性面板 + 图层列表。
- * - 选中对象：填充色 / 字号（文字）/ 层级前后 / 删除；
+ * - 选中对象：填充色 / 字号（文字）/ **AI 修改（图片）** / 层级前后 / 删除；
  * - 未选中：画布背景色 + 尺寸预设；
  * - 图层列表：把画布对象镜像为 HTML 按钮（canvas 对辅助技术不可见），
  *   支持键盘聚焦与选择，满足可达性要求。
@@ -57,8 +59,11 @@ function Swatches({
 
 function ObjectProperties({ object }: { object: DesignObject }) {
   const { commitObject, removeObject, reorder } = useEditor();
+  const [aiEditOpen, setAiEditOpen] = useState(false);
   const meta = OBJECT_TYPE_META[object.type];
   const fill = object.type === 'image' ? null : object.fill;
+  // 单选图片对象才提供「AI 修改」（以其 assetId 为源走 I2I）
+  const image = object.type === 'image' ? object : null;
 
   return (
     <div className='space-y-4'>
@@ -77,6 +82,20 @@ function ObjectProperties({ object }: { object: DesignObject }) {
           <Icons.trash />
         </Button>
       </div>
+
+      {image && (
+        <div className='space-y-1.5'>
+          <span className='text-muted-foreground text-xs'>AI</span>
+          <Button
+            variant='outline'
+            size='sm'
+            className='w-full'
+            onClick={() => setAiEditOpen(true)}
+          >
+            <Icons.sparkles /> AI 修改
+          </Button>
+        </div>
+      )}
 
       {fill !== null && (
         <div className='space-y-1.5'>
@@ -118,6 +137,8 @@ function ObjectProperties({ object }: { object: DesignObject }) {
           </Button>
         </div>
       </div>
+
+      {image && <AiEditDialog object={image} open={aiEditOpen} onOpenChange={setAiEditOpen} />}
     </div>
   );
 }
@@ -355,7 +376,8 @@ export function PropertiesPanel() {
   if (selectedObjects.length > 1) {
     body = <MultiProperties />;
   } else if (selectedObjects.length === 1) {
-    body = <ObjectProperties object={selectedObjects[0]} />;
+    // key=对象 id：切换选中时重建面板，重置「AI 修改」等局部弹层状态
+    body = <ObjectProperties key={selectedObjects[0].id} object={selectedObjects[0]} />;
   } else {
     body = <CanvasProperties />;
   }

@@ -126,6 +126,18 @@ export const editImageRequestSchema = z.object({
 
 export type EditImageRequest = z.infer<typeof editImageRequestSchema>;
 
+/**
+ * 图片「AI 生成」（直连 T2I，设计画布内使用）请求体。
+ * title 可空：缺省由服务端按 prompt 截断生成（与聊天内工具由模型给标题不同）。
+ */
+export const generateImageRequestSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+  aspect: z.enum(ASPECT_KEYS).optional(),
+  title: z.string().min(1).max(100).optional()
+});
+
+export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;
+
 /** 收藏/取消收藏请求体 */
 export const favoriteRequestSchema = z.object({
   favorite: z.boolean()
