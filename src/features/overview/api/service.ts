@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { cache } from 'react';
 import { getDb } from '@/lib/db';
 import { assets, conversations } from '@/lib/db/schema';
-import type { AssetKind } from '@/features/agent/api/types';
+import { ASSET_KIND_VALUES, type AssetKind } from '@/features/agent/api/types';
 import type { AssetStats, ConversationStats, DailyAssetCount, RecentAssetItem } from './types';
 
 /**
@@ -17,10 +17,12 @@ import type { AssetStats, ConversationStats, DailyAssetCount, RecentAssetItem } 
 
 const TREND_DAYS = 30;
 const TREND_TIMEZONE = 'Asia/Shanghai';
+/** TREND_TIMEZONE 的固定偏移（上海无夏令时），用于构造日历日边界 */
+const TREND_TZ_OFFSET = '+08:00';
 const RECENT_LIMIT = 8;
 
-/** 类型分布固定顺序（与 ASSET_KIND_META 一致） */
-const KIND_ORDER: AssetKind[] = ['markdown', 'html', 'image', 'design'];
+/** 类型分布固定顺序（直接取 ASSET_KIND_VALUES 单一来源，新增类型不会漏统计） */
+const KIND_ORDER: AssetKind[] = [...ASSET_KIND_VALUES];
 
 const EMPTY_STATS: AssetStats = {
   total: 0,
@@ -33,7 +35,8 @@ const EMPTY_STATS: AssetStats = {
 };
 
 interface DayBucketRow {
-  day: Date;
+  /** SQL 端 to_char 产出的日历日 key（YYYY-MM-DD），不经 JS Date 解析，避免服务器时区干扰 */
+  day: string;
   source: string;
   total: string;
 }
@@ -55,7 +58,8 @@ function formatDayKey(date: Date): string {
 function getTrendWindow(): { start: Date; end: Date; dayKeys: string[] } {
   const now = new Date();
   const todayKey = formatDayKey(now);
-  const start = new Date(`${todayKey}T00:00:00.000Z`);
+  // 边界必须是「上海午夜」：用 +08:00 构造，若用 Z（UTC 午夜）会漏掉首日 00:00-08:00 的资产
+  const start = new Date(`${todayKey}T00:00:00.000${TREND_TZ_OFFSET}`);
   start.setUTCDate(start.getUTCDate() - (TREND_DAYS - 1));
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + TREND_DAYS);
@@ -69,7 +73,7 @@ function getTrendWindow(): { start: Date; end: Date; dayKeys: string[] } {
   return { start, end, dayKeys };
 }
 
-/** 按天分组行（date_trunc 结果为 UTC 午夜时刻）→ 逐日补 0 的升序趋势 */
+/** 按天分组行（day 已是 YYYY-MM-DD 文本）→ 逐日补 0 的升序趋势 */
 function buildDailyTrend(rows: DayBucketRow[]): DailyAssetCount[] {
   const { dayKeys } = getTrendWindow();
   const byDay = new Map<string, DailyAssetCount>();
@@ -77,11 +81,7 @@ function buildDailyTrend(rows: DayBucketRow[]): DailyAssetCount[] {
     byDay.set(key, { date: key, count: 0, generated: 0, imported: 0 });
   }
   for (const row of rows) {
-    // date_trunc('day', timestamptz) 返回 UTC 午夜时刻；按同一时区还原日历日
-    const bucketKey = formatDayKey(
-      new Date(new Date(row.day).toISOString().slice(0, 10) + 'T00:00:00.000Z')
-    );
-    const bucket = byDay.get(bucketKey);
+    const bucket = byDay.get(row.day);
     if (!bucket) continue;
     const value = Number(row.total);
     bucket.count += value;
@@ -125,7 +125,9 @@ export const getAssetStats = cache(async (userId: string | null): Promise<AssetS
       .groupBy(assets.kind),
     db
       .select({
-        day: sql<Date>`date_trunc('day', ${assets.createdAt} at time zone ${TREND_TIMEZONE})`,
+        // at time zone 产出 timestamp without tz，若原样返回会被 pg 驱动按服务器本地时区
+        // 解析成 Date（+08 机器上整体前移一天）；在 SQL 端直接 to_char 成日期文本规避该问题
+        day: sql<string>`to_char(date_trunc('day', ${assets.createdAt} at time zone ${TREND_TIMEZONE}), 'YYYY-MM-DD')`,
         source: assets.source,
         total: sql<string>`count(*)::text`
       })

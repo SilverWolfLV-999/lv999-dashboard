@@ -40,7 +40,7 @@ export interface AssetStats {
   prev30dCount: number;
   /** 图片资产数（kind='image'） */
   imageCount: number;
-  /** 各类型计数（固定顺序：markdown/html/image/design） */
+  /** 各类型计数（固定顺序：与 ASSET_KIND_VALUES 一致，含 video） */
   kindCounts: AssetKindCount[];
   /** 近 30 天按天趋势（升序，缺失日期已补 0） */
   dailyTrend: DailyAssetCount[];

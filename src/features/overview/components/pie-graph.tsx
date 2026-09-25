@@ -34,6 +34,10 @@ const chartConfig = {
   design: {
     label: '设计',
     color: 'var(--chart-4)'
+  },
+  video: {
+    label: '视频',
+    color: 'var(--chart-5)'
   }
 } satisfies ChartConfig;
 
