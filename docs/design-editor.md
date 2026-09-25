@@ -38,6 +38,7 @@ design 是 assets 的第 4 类（见 [`agent/constants/kinds.ts`](../src/feature
 | `content` | `JSON.stringify(DesignDocument)`（可编辑文档） |
 | `mime` | `'application/json'` |
 | `storageKey` | 导出 PNG 预览的 OSS key（用于列表缩略 / 预览 / 下载） |
+| `sizeBytes` | **预览 PNG 字节数**（与 image/video 同口径：`sizeBytes` = 下载产物体积，避免列表显示几百 B 而下载文件上 MB；无预览时回退文档 JSON 字节）|
 | `source` | `'agent'` |
 
 ### 文档结构 `DesignDocument`

@@ -510,6 +510,9 @@ export async function createVideoAsset(params: {
  * 设计画布资产：文档 JSON 存 content 列，导出 PNG 预览存 OSS（storageKey）。
  * 参照 createImageAsset 的「预生成 id → 转存 OSS → 一次性 insert 全字段」。
  * previewPng 可空（纯图形文档首次保存可不带预览）；mime 固定 application/json（描述 content 列）。
+ *
+ * **sizeBytes 口径与 image/video 一致 = 下载产物体积**（design 下载走预览 PNG，非文档 JSON），
+ * 避免列表显示几百 B 而下载文件上 MB 的观感矛盾；无预览时回退文档 JSON 字节。
  */
 export async function createDesignAsset(params: {
   userId: string;
@@ -520,12 +523,14 @@ export async function createDesignAsset(params: {
   previewPng?: Buffer | null;
 }): Promise<{ id: string; sizeBytes: number }> {
   const assetId = randomUUID();
-  const sizeBytes = Buffer.byteLength(params.document, 'utf8');
+  const previewPng =
+    params.previewPng && params.previewPng.byteLength > 0 ? params.previewPng : null;
+  const sizeBytes = previewPng ? previewPng.byteLength : Buffer.byteLength(params.document, 'utf8');
 
   let storageKey: string | null = null;
-  if (params.previewPng && params.previewPng.byteLength > 0) {
+  if (previewPng) {
     storageKey = assetObjectKey(params.userId, assetId, 'png');
-    await putObject(storageKey, params.previewPng, 'image/png');
+    await putObject(storageKey, previewPng, 'image/png');
   }
 
   const db = getDb();
@@ -548,6 +553,8 @@ export async function createDesignAsset(params: {
 /**
  * 按所有权更新 design 资产：content/title 按存在性更新，重传 PNG 覆盖同一 storageKey。
  * 仅对 kind='design' 且归属当前用户的行生效；返回是否命中更新。
+ * sizeBytes 仅在**本次重传了预览**时更新（口径 = 下载产物体积）；未重传时 storageKey 仍指旧 PNG，
+ * 旧值更贴近真实下载体积，故不动（文档 JSON 变化不影响该口径）。
  */
 export async function updateDesignAsset(params: {
   userId: string;
@@ -557,10 +564,12 @@ export async function updateDesignAsset(params: {
   document?: string;
   previewPng?: Buffer | null;
 }): Promise<boolean> {
+  const previewPng =
+    params.previewPng && params.previewPng.byteLength > 0 ? params.previewPng : null;
   let storageKey: string | null = null;
-  if (params.previewPng && params.previewPng.byteLength > 0) {
+  if (previewPng) {
     storageKey = assetObjectKey(params.userId, params.assetId, 'png');
-    await putObject(storageKey, params.previewPng, 'image/png');
+    await putObject(storageKey, previewPng, 'image/png');
   }
 
   const set: Partial<{
@@ -571,10 +580,8 @@ export async function updateDesignAsset(params: {
     updatedAt: Date;
   }> = { updatedAt: new Date() };
   if (params.title !== undefined) set.title = params.title;
-  if (params.document !== undefined) {
-    set.content = params.document;
-    set.sizeBytes = Buffer.byteLength(params.document, 'utf8');
-  }
+  if (params.document !== undefined) set.content = params.document;
+  if (previewPng) set.sizeBytes = previewPng.byteLength;
   if (storageKey) set.storageKey = storageKey;
 
   const db = getDb();

@@ -102,7 +102,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | `favorite` | boolean | 用户收藏标记，默认 false；任意 kind 可收藏，列表支持「仅看收藏」筛选 |
 | `content` | text \| null | 文本资产存正文；图片 / 视频资产存生成 prompt（可溯源）；design 资产存文档 JSON |
 | `storageKey` | text \| null | OSS 对象 key（图片 / 视频 / design 预览 PNG 等二进制非空） |
-| `mime` / `sizeBytes` | | |
+| `mime` / `sizeBytes` | text / integer \| null | **`sizeBytes` 口径 = 下载产物体积**：有 `storageKey` 的二进制（image / video / design）记 OSS 对象字节（design = 预览 PNG 大小，非文档 JSON），无二进制时回退 `content` 字节 |
 | `createdAt` / `updatedAt` | timestamptz | 索引：`(userId, createdAt)`、`(conversationId)` |
 
 > **关键判据**：判断资产是否为二进制（走 OSS）用 `storageKey` 而非 `content`——图片资产的 `content` 列存的是 prompt（非 null）。
