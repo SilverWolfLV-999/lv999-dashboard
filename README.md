@@ -34,7 +34,7 @@ LV999 Dashboard 定位为个人项目的统一后台底座——功能完整、�
 - **表单体系**：TanStack Form + Zod；可复用字段组件、多步表单、对话框 / 抽屉表单，提交后自动失效相关查询缓存
 - **认证与账户**：Clerk 提供无密码登录、社交登录、企业 SSO 与账户管理
 - **管理员用户管理后台**：`ADMIN_USER_IDS` env 白名单 + 服务端 `isAdmin` 强制校验；`/dashboard/admin/users` 列出全部用户、调整其 Credits、级联删除账号（Clerk + 业务数据 + OSS），入口在账号下拉（仅管理员可见）
-- **导航 RBAC**：按权限 / 角色过滤菜单项（客户端仅 UX 过滤，安全校验在服务端）
+- **导航可见性**：客户端同步过滤菜单（UX only）；org-based RBAC 已随 Clerk Organizations 关闭退役，权限控制由服务端 `isAdmin` 白名单承担
 - **命令面板**：⌘K / Ctrl+K 快速搜索与跳转（kbar）
 - **主题系统**：基于 `data-theme` 与 CSS 变量的可扩展多主题架构（当前内置 Vercel 主题）
 - **Infobar 提示侧栏**：为任意页面提供上下文说明与文档入口
@@ -209,9 +209,9 @@ Agent 的对话 / 生图 / 生视频 / 知识库摄取调用的是部署者的�
 
 `createFormHook` + 可复用 Field 组件，Schema 定义在 `features/*/schemas/`；提交走 `useMutation`，成功后通过查询键工厂失效缓存。详见 [docs/forms.md](./docs/forms.md)。
 
-### 权限：RBAC 导航
+### 权限：导航可见性 + 服务端鉴权
 
-`src/config/nav-config.ts` 中用 `access` 声明 `requireOrg` / `permission` / `role` / `plan` / `feature`，`useFilteredNavGroups()` 在客户端过滤菜单。这仅是 UX 层；真正的安全校验由 Clerk 在服务端完成，详见 [docs/nav-rbac.md](./docs/nav-rbac.md)。
+`src/config/nav-config.ts` 声明导航项，`useFilteredNavGroups()` 在客户端同步过滤（仅 UX 层）。org-based RBAC（`requireOrg`/`permission`/`role`）已随 Clerk Organizations 关闭退役；真正的权限控制是服务端 `isAdmin`（`ADMIN_USER_IDS` 白名单，管理页/端点强制校验）与登录 `auth.protect()`，详见 [docs/nav-rbac.md](./docs/nav-rbac.md) 与 [docs/user-management.md](./docs/user-management.md)。
 
 ### 主题系统
 

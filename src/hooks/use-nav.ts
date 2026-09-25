@@ -1,10 +1,14 @@
 'use client';
 
 /**
- * Fully client-side hook for filtering navigation items based on RBAC
+ * 导航可见性过滤（纯客户端，UX only）。
  *
- * This hook uses Clerk's client-side hooks to check permissions, roles, and organization
- * without any server calls. This is perfect for navigation visibility (UX only).
+ * 历史：本 hook 曾用 Clerk `useOrganization()` / `useUser()` 做 org-based RBAC
+ * （requireOrg / permission / role）。项目已在 Clerk 关闭 Organizations（个人自托管、
+ * 单管理员模型），org 上下文不复存在；继续调用 `useOrganization` 会触发 Clerk 的
+ * 「Organizations feature required」弹窗。故 org 数据源移除（恒为无组织），
+ * requireOrg / permission / role 的导航项在当前部署下隐藏。
+ * 真正的权限控制由服务端 `isAdmin`（ADMIN_USER_IDS 白名单）承担，见 docs/user-management.md。
  *
  * Performance:
  * - All checks are synchronous (no server calls)
@@ -17,8 +21,17 @@
  */
 
 import { useMemo } from 'react';
-import { useOrganization, useUser } from '@clerk/nextjs';
 import type { NavItem, NavGroup } from '@/types';
+
+/**
+ * 无组织上下文（Clerk Organizations 已关闭）：org-based access 恒不满足。
+ * hasOrg=false → requireOrg / permission / role 的导航项隐藏；无 access 的项正常显示。
+ */
+const ACCESS_CONTEXT = {
+  hasOrg: false,
+  permissions: [] as string[],
+  role: undefined as string | undefined
+};
 
 /**
  * Hook to filter navigation items based on RBAC (fully client-side)
@@ -27,23 +40,7 @@ import type { NavItem, NavGroup } from '@/types';
  * @returns Filtered items
  */
 export function useFilteredNavItems(items: NavItem[]) {
-  const { organization, membership } = useOrganization();
-  const { user } = useUser();
-
-  // Memoize context and permissions
-  const accessContext = useMemo(() => {
-    const permissions = membership?.permissions || [];
-    const role = membership?.role;
-
-    return {
-      organization: organization ?? undefined,
-      user: user ?? undefined,
-      permissions: permissions as string[],
-      role: role ?? undefined,
-      hasOrg: !!organization
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- using stable primitives to avoid infinite re-renders from unstable Clerk object refs
-  }, [organization?.id, user?.id, membership?.permissions, membership?.role]);
+  const accessContext = ACCESS_CONTEXT;
 
   // Filter items synchronously (all client-side)
   const filteredItems = useMemo(() => {
