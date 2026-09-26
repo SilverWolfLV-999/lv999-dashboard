@@ -190,6 +190,31 @@ function fitFontSize(
   return Math.max(minSize, size);
 }
 
+/** 单行容许的字号收缩幅度（缩到原字号的 85% 以内就宁可单行） */
+const SINGLE_LINE_TOLERANCE = 0.85;
+
+/**
+ * 选字号：短文案优先单行。
+ *
+ * Konva 对 CJK 按字断行，「城市漫步地图」被拆成「城市漫步地 / 图」这类断词很难看；
+ * 而标题本来就是一句话，单行观感优于两行。因此只需缩 ≤15% 字号就能一行排下时按单行；
+ * 否则（长标题缩到单行会小到不可读）维持多行换行。
+ */
+function pickFontSize(
+  text: string,
+  maxWidth: number,
+  preferred: number,
+  maxLines: number,
+  minSize: number
+): number {
+  const oneLine = fitFontSize(text, maxWidth, preferred, 1, minSize);
+  // 额外校验“真的能单行”：minSize 接近 preferred 时，fitFontSize 会被地板钳住而仍可能换行
+  if (oneLine >= preferred * SINGLE_LINE_TOLERANCE && estimateLines(text, oneLine, maxWidth) <= 1) {
+    return oneLine;
+  }
+  return fitFontSize(text, maxWidth, preferred, maxLines, minSize);
+}
+
 /** Konva Text 默认 lineHeight=1，故文字块高度 = 行数 × 字号 */
 function textBlockHeight(lines: number, fontSize: number): number {
   return lines * fontSize;
@@ -270,23 +295,19 @@ function buildTextBlock(params: {
   withAccent: boolean;
 }): TextBlock {
   const { box, align, palette } = params;
-  const headingSize = fitFontSize(
+  const headingMin = Math.max(18, Math.round(params.headingSize * 0.5));
+  const headingSize = pickFontSize(
     params.heading,
     box.width,
     params.headingSize,
     params.maxLines,
-    Math.max(18, Math.round(params.headingSize * 0.5))
+    headingMin
   );
   const headingLines = estimateLines(params.heading, headingSize, box.width);
   const subheading = params.subheading?.trim() ? params.subheading.trim() : null;
+  const subheadingMin = Math.max(14, Math.round(params.subheadingSize * 0.6));
   const subheadingSize = subheading
-    ? fitFontSize(
-        subheading,
-        box.width,
-        params.subheadingSize,
-        2,
-        Math.max(14, Math.round(params.subheadingSize * 0.6))
-      )
+    ? pickFontSize(subheading, box.width, params.subheadingSize, 2, subheadingMin)
     : 0;
   const subheadingLines = subheading ? estimateLines(subheading, subheadingSize, box.width) : 0;
 

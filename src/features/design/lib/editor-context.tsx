@@ -29,7 +29,7 @@ import {
 } from '../hooks/use-editor-reducer';
 import { assetRawUrl } from '../hooks/use-asset-image';
 import { createImageObject, createShapeObject, type Point } from './document';
-import { dataUrlToBase64, downloadDataURL, exportStageToDataURL } from './export';
+import { downloadDataURL, exportPreviewBase64, exportStageToDataURL } from './export';
 
 interface EditorContextValue {
   // 文档与选择
@@ -111,6 +111,8 @@ interface EditorProviderProps {
   initialDocument: DesignDocument;
   /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
   initialImageAssetId?: string | null;
+  /** 打开时是否已有预览 PNG（= asset.storageKey 非空）；决定无改动保存时能否跳过预览重导 */
+  initialHasPreview?: boolean;
   children: ReactNode;
 }
 
@@ -119,6 +121,7 @@ export function EditorProvider({
   initialTitle,
   initialDocument,
   initialImageAssetId,
+  initialHasPreview = false,
   children
 }: EditorProviderProps) {
   const router = useRouter();
@@ -149,7 +152,13 @@ export function EditorProvider({
   const titleRef = useRef(title);
   titleRef.current = title;
   const createdIdRef = useRef<string | null>(null);
-  const savedSnapshotRef = useRef<string>(JSON.stringify(initialDocument));
+  // 上次成功保存的文档快照：用 state（而非 ref）才能让 isDirty 在保存后正确重算，
+  // 并使 memo 依赖与读取值一致
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(initialDocument));
+  // 当前是否已有预览 PNG（语义：预览与已保存文档一致；本次尝试导出失败则仍为 false）
+  const hasPreviewRef = useRef(initialHasPreview);
+  // 保存 in-flight 闸门（见 save）
+  const savingRef = useRef(false);
   const hasFittedRef = useRef(false);
 
   const { mutateAsync: createDesign, isPending: isCreating } = useMutation(createDesignMutation);
@@ -373,9 +382,9 @@ export function EditorProvider({
     const stage = stageRef.current;
     if (!stage) return;
     try {
+      // 不传 maxPixelRatio → 默认 1（只缩不放）：导出尺寸 = 画布原尺寸，超大画布才按 2560 缩边
       const dataUrl = exportStageToDataURL(stage, stateRef.current.present, {
-        maxDimension: 2560,
-        maxPixelRatio: 2
+        maxDimension: 2560
       });
       const safeTitle = titleRef.current.replace(/[\\/:*?"<>|]/g, '-').trim() || '未命名设计';
       downloadDataURL(dataUrl, `${safeTitle}.png`);
@@ -386,37 +395,47 @@ export function EditorProvider({
   }, []);
 
   const save = useCallback(async () => {
-    const stage = stageRef.current;
-    const doc = stateRef.current.present;
-    const currentTitle = titleRef.current.trim() || '未命名设计';
-
-    // 导出预览 PNG（失败不阻塞保存：文档本身仍完整落库）
-    let previewPng: string | undefined;
-    if (stage) {
-      try {
-        const dataUrl = exportStageToDataURL(stage, doc, {
-          maxDimension: 1280,
-          maxPixelRatio: 1.5
-        });
-        previewPng = dataUrlToBase64(dataUrl);
-      } catch (error) {
-        console.error('[design] preview export failed', error);
-      }
-    }
-
+    // 并发闸门：工具栏按钮有 disabled={isSaving}，但 Ctrl/Cmd+S 的 keydown 不受 isSaving 约束
+    // （按住不放会连续触发），而一次保存要同步导出 + 上传 2.5MB 级 base64，窗口达秒级；
+    // 新建页上重复保存会开出两条资产。
+    if (savingRef.current) return;
+    savingRef.current = true;
     try {
+      const stage = stageRef.current;
+      const doc = stateRef.current.present;
+      const currentTitle = titleRef.current.trim() || '未命名设计';
+
+      // 导出预览 PNG（失败不阻塞保存：文档本身仍完整落库）
+      // 阶梯内优先画布原尺寸（不放大）——这张 PNG 同时是资产列表的**下载产物**。
+      // 仅在「文档真有改动」或「此前没有预览」时才导出：预览上传是 2.5MB 级且 toDataURL 同步
+      // 阻塞主线程，只改标题或重复保存时不必重做（服务端 updateDesignAsset 按 previewPng 存在性更新）。
+      const dirty = JSON.stringify(doc) !== savedSnapshot;
+      const needPreview = dirty || !hasPreviewRef.current;
+      let previewPng: string | undefined;
+      if (stage && needPreview) {
+        try {
+          previewPng = exportPreviewBase64(stage, doc);
+        } catch (error) {
+          console.error('[design] preview export failed', error);
+        }
+      }
+
       const existingId = createdIdRef.current ?? assetId;
       if (existingId) {
         await updateDesign({
           id: existingId,
           values: { title: currentTitle, document: doc, previewPng }
         });
-        savedSnapshotRef.current = JSON.stringify(doc);
+        setSavedSnapshot(JSON.stringify(doc));
+        // hasPreview 语义是「预览与已存文档一致」：仅当本次尝试过导出才由结果决定
+        // （尝试了但失败/超预算→ false，下次保存会补导；未尝试→ 维持原值）。
+        if (needPreview) hasPreviewRef.current = Boolean(previewPng);
         toast.success('已保存');
       } else {
         const { id } = await createDesign({ title: currentTitle, document: doc, previewPng });
         createdIdRef.current = id;
-        savedSnapshotRef.current = JSON.stringify(doc);
+        setSavedSnapshot(JSON.stringify(doc));
+        if (needPreview) hasPreviewRef.current = Boolean(previewPng);
         toast.success('已创建');
         // 真实导航进入 [id]（沿用 agent 新建会话范式）；页面会以刚保存的文档重新挂载
         router.replace(`/dashboard/design/${id}`);
@@ -429,8 +448,10 @@ export function EditorProvider({
             ? '预览图过大，保存失败'
             : '保存失败，请重试';
       toast.error(message);
+    } finally {
+      savingRef.current = false;
     }
-  }, [assetId, createDesign, updateDesign, router]);
+  }, [assetId, createDesign, updateDesign, router, savedSnapshot]);
 
   // 键盘快捷键（文字编辑态让位于原生输入，避免抢键/破坏 IME）
   useEffect(() => {
@@ -540,7 +561,14 @@ export function EditorProvider({
 
   const selectedObject = selectedObjects.length > 0 ? selectedObjects[0] : null;
 
-  const isDirty = JSON.stringify(state.present) !== savedSnapshotRef.current;
+  /**
+   * 脏位比对：memo 化避免每次 provider render（含滚轮缩放/平移）都 stringify 整份文档。
+   * 依赖 savedSnapshot 保证保存成功后（present 引用未变）能重算为 false。
+   */
+  const isDirty = useMemo(
+    () => JSON.stringify(state.present) !== savedSnapshot,
+    [state.present, savedSnapshot]
+  );
 
   const value = useMemo<EditorContextValue>(
     () => ({

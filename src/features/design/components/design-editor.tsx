@@ -18,13 +18,16 @@ interface DesignEditorProps {
   initialDocument: DesignDocument;
   /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
   initialImageAssetId?: string | null;
+  /** 打开时是否已有预览 PNG（= asset.storageKey 非空）；无改动保存时据此跳过预览重导 */
+  initialHasPreview?: boolean;
 }
 
 export function DesignEditor({
   assetId,
   initialTitle,
   initialDocument,
-  initialImageAssetId
+  initialImageAssetId,
+  initialHasPreview
 }: DesignEditorProps) {
   return (
     <EditorProvider
@@ -32,6 +35,7 @@ export function DesignEditor({
       initialTitle={initialTitle}
       initialDocument={initialDocument}
       initialImageAssetId={initialImageAssetId}
+      initialHasPreview={initialHasPreview}
     >
       <div className='flex h-[calc(100svh-4rem)] min-w-0 flex-1 flex-col md:h-[calc(100svh-3.5rem)]'>
         <EditorToolbar />

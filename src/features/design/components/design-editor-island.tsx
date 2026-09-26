@@ -18,6 +18,8 @@ interface DesignEditorIslandProps {
   initialDocument: DesignDocument;
   /** 预置图片资产 id（「在画布使用」入口）；挂载时插入画布，不自动保存 */
   initialImageAssetId?: string | null;
+  /** 打开时是否已有预览 PNG（= asset.storageKey 非空） */
+  initialHasPreview?: boolean;
 }
 
 export function DesignEditorIsland(props: DesignEditorIslandProps) {

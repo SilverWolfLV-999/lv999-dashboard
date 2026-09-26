@@ -13,16 +13,21 @@ import { Separator } from '@/components/ui/separator';
 import { FileUploader } from '@/components/file-uploader';
 import { Icons } from '@/components/icons';
 import { ApiError } from '@/lib/api-client';
+import { assetThumbUrl } from '@/features/agent/lib/asset-url';
 import { uploadImageMutation } from '../api/mutations';
 import { assetsQueryOptions } from '../api/queries';
-import { assetRawUrl, loadNaturalSize } from '../hooks/use-asset-image';
+import { loadNaturalSize } from '../hooks/use-asset-image';
 import { useEditor } from '../lib/editor-context';
 import type { Asset } from '@/features/agent/api/types';
 
 /**
  * 「插入图片」选择器：上传本地图片 + 从我的资产（kind=image）中选一张插入画布。
- * 只存资产引用 assetId（不存字节）；缩略图经同源 /raw 代理加载，
- * 并在加载完成时记录自然尺寸，插入时据此等比缩放。
+ * 只存资产引用 assetId（不存字节）；缩略图走 OSS 缩放后的 `?thumb=1`（本弹窗一次列 60 张，
+ * 直拉原图就是几十 MB），并在加载完成时记录自然尺寸，插入时据此等比缩放。
+ *
+ * 缩略图被缩小不影响插入尺寸：`createImageObject` / `imageReplacePatch` **只消费宽高比**
+ * （绝对尺寸由 maxBox / 原外接框决定），而 `image/resize,w_N` 只等比缩放不裁切，比例精确不变
+ * ——因此 OSS 处理参数不得改成 `m_fill` 等裁切模式。
  */
 interface AssetImagePickerProps {
   open: boolean;
@@ -153,9 +158,9 @@ function AssetThumb({
   onNatural: RefObject<Map<string, { width: number; height: number }>>;
 }) {
   return (
-    // oxlint-disable-next-line nextjs/no-img-element -- 经同源 /raw 代理加载缩略图，画布导出不被跨域污染
+    // oxlint-disable-next-line nextjs/no-img-element -- 经同源 /raw 代理加载缩略图（OSS 等比缩放），画布导出不被跨域污染
     <img
-      src={assetRawUrl(asset.id)}
+      src={assetThumbUrl(asset)}
       alt={asset.title}
       loading='lazy'
       onLoad={(event) => {

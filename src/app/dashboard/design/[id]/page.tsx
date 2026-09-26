@@ -26,7 +26,8 @@ export default async function DesignEditPage({ params }: PageProps) {
   if (!asset || asset.kind !== 'design') notFound();
 
   // 文档损坏/版本不符时回退空白文档（不阻断编辑；用户可重新保存覆盖）
-  const initialDocument = parseDesignDocument(asset.content) ?? createEmptyDocument();
+  const parsed = parseDesignDocument(asset.content);
+  const initialDocument = parsed ?? createEmptyDocument();
 
   return (
     <DesignEditorIsland
@@ -34,6 +35,9 @@ export default async function DesignEditPage({ params }: PageProps) {
       assetId={asset.id}
       initialTitle={asset.title}
       initialDocument={initialDocument}
+      // 已有预览且预览对应当前文档才算 true：文档解析失败而回退空白时，
+      // 旧 PNG 已不描述画布内容，必须当作无预览强制下次保存重导
+      initialHasPreview={asset.storageKey !== null && parsed !== null}
     />
   );
 }

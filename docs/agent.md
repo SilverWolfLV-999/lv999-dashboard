@@ -196,7 +196,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 - **五类资产**：`markdown` / `html` / `image` / `design` / `video`（元数据统一在 [`constants/kinds.ts`](../src/features/agent/constants/kinds.ts)，对话卡片 / 预览弹窗 / 表格列共用）。`design`（设计画布产物）由设计模块写入，见 [docs/design-editor.md](./design-editor.md)；`video`（视频产物）见 [docs/video-generation.md](./video-generation.md)。
 - **文本资产**：正文直接存 `content` 列（Phase 1 决策：MVP 不引入 OSS，`storageKey` / `mime` / `sizeBytes` 字段已预留）。
-- **图片 / 视频资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。视频封面经 OSS 原生截帧（`videoSnapshotUrl`）动态生成，经 `/raw?snapshot=1` 同源代理下发（列表不渲染 `<video>`）。
+- **图片 / 视频资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。视频封面经 OSS 原生截帧（`videoSnapshotUrl`）动态生成，经 `/raw?snapshot=1` 同源代理下发（列表不渲染 `<video>`）。图片/设计的**缩略图**经 `/raw?thumb=1`（OSS 原生图片处理 `image/resize,w_320`，只等比缩放不裁切；处理不可用时回退原图）下发，避免 36~150px 格子拉 1~2MB 原图；仅 design 额外带 `&v=updatedAt` 破缓存（它的预览会被覆盖写，image 内容不可变），见 [docs/design-editor.md](./design-editor.md) 第 5 节。
 - **血缘**：I2I 产物与 I2V 产物通过 `sourceAssetId` 指向源图；预览弹窗展示「基于《源标题》修改」；源图删除后 `SET NULL`，派生资产仍可访问。
 - **收藏**（`favorite` boolean 列）：任意 kind 可收藏；列表支持「仅看收藏」筛选（`AssetFilters.favorite`）；切换走 `POST /api/agent/assets/[id]/favorite`（限流 60 次/分）。
 - **下载**（[`assets/[id]/download`](../src/app/api/agent/assets/[id]/download/route.ts)）：有 `storageKey` → 302 跳转带附件名的短期签名 URL（TTL 300s）；文本资产直接返回 `content`；**无预览的 design**（`composeDesign` 首轮产出）返回 501（`content` 是文档 JSON，不能当 PNG 下发），前端相应隐藏下载入口。

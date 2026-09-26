@@ -58,6 +58,40 @@ export async function getSignedUrl(
 }
 
 /**
+ * 缩略图统一宽度（等比缩放）：覆盖列表 36px（DPR 3 → 108）与设计选图弹窗 ~150px 格子
+ * （DPR 2 → 300）；DPR 3 的网格会略软，但不影响插入尺寸（消费方只读宽高比）。
+ * 不分档参数化：那等于对外开一个免费的图片处理接口，收益只有几 KB。
+ */
+export const THUMB_IMAGE_WIDTH = 320;
+
+/**
+ * 图片缩略图签名 URL（OSS 原生图片处理，零依赖零额外存储）。
+ *
+ * 列表行首 36px 与「插入图片」网格若直拉原图（AI 产出多为 1K~2K 档、1~2MB/张），
+ * 一页就是十几 MB 的函数出口带宽；改由 OSS 等比缩放后单张只剩十几 KB。
+ *
+ * 只用 `image/resize,w_N`（**等比缩放、不裁切**）：消费方（画布插入/替换）按 naturalWidth/Height
+ * 反推宽高比，裁切模式（m_fill）会破坏比例导致插入尺寸错误。
+ * process 必须经 signatureUrl 选项纳入签名（同 videoSnapshotUrl，先签名再手拼会 SignatureDoesNotMatch）。
+ */
+export function imageThumbUrl(
+  storageKey: string,
+  options?: {
+    /** 输出宽度（高度按比例），默认 THUMB_IMAGE_WIDTH */
+    width?: number;
+    /** 签名有效期（秒），默认 300（足够一次拉取） */
+    expiresInSeconds?: number;
+  }
+): string {
+  const width = options?.width ?? THUMB_IMAGE_WIDTH;
+  const expiresInSeconds = options?.expiresInSeconds ?? 300;
+  return getOssClient().signatureUrl(storageKey, {
+    expires: expiresInSeconds,
+    process: `image/resize,w_${width}`
+  });
+}
+
+/**
  * 视频截帧封面签名 URL（OSS 原生视频截帧，零成本零依赖零存储）。
  *
  * 通过 signatureUrl 的 process 选项下发 `x-oss-process=video/snapshot`，该参数会被纳入签名

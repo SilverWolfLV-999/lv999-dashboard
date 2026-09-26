@@ -13,6 +13,7 @@ import { Icons } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { setAssetFavoriteMutation } from '../../../api/mutations';
 import { ASSET_KIND_META, ASSET_KINDS, getAssetKindMeta } from '../../../constants/kinds';
+import { assetThumbUrl } from '../../../lib/asset-url';
 import type { Asset } from '../../../api/types';
 import { formatBytes, formatDateTime } from '../../../lib/format';
 import { CellAction } from './cell-action';
@@ -90,6 +91,7 @@ function AssetTitleCell({ asset }: { asset: Asset }) {
  * 视频资产经 /raw?snapshot=1 加载 OSS 截帧封面 + 播放图标 overlay（列表不渲染 <video>，
  * 避免 10+ 视频并发预加载阻塞页面）；文本类资产与加载失败回退为类型图标 tile；
  * 无预览的 design（AI 整版首轮）直接走占位 tile，不发必然 404 的 /raw 请求；
+ * 图片/设计缩略图走 `?thumb=1`（OSS 等比缩放）+ 版本参数，不拉原图（见 lib/asset-url.ts）；
  * bg-muted 兼作暗色下透明图底色。
  */
 function AssetThumb({ asset }: { asset: Asset }) {
@@ -112,8 +114,8 @@ function AssetThumb({ asset }: { asset: Asset }) {
       </span>
     );
   }
-  // 视频走截帧封面（?snapshot=1）；图片/设计走完整对象缩略图
-  const src = `/api/agent/assets/${asset.id}/raw${isVideo ? '?snapshot=1' : ''}`;
+  // 视频走截帧封面（?snapshot=1）；图片/设计走 OSS 缩放后的缩略图
+  const src = isVideo ? `/api/agent/assets/${asset.id}/raw?snapshot=1` : assetThumbUrl(asset);
   return (
     <span className='relative size-9 shrink-0'>
       {
