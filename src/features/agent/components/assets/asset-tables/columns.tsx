@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import type { Column, ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
@@ -25,16 +26,48 @@ const AssetPreviewDialog = dynamic(
   { ssr: false }
 );
 
+/** AI 整版产出、尚未在画布保存的 design：无预览 PNG（预览由保存时客户端导出） */
+function isPreviewlessDesign(asset: Asset): boolean {
+  return asset.kind === 'design' && !asset.hasPreview;
+}
+
 /** 标题单元格：类型缩略图 + 标题，点击打开预览弹窗（资产视角，不再深链到来源会话） */
 function AssetTitleCell({ asset }: { asset: Asset }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
+  // 无预览的 design 弹窗里无图可看，改为直接进画布（保存后自动生成预览）
+  const openInEditor = isPreviewlessDesign(asset);
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
   const openPreview = () => {
     setPreviewMounted(true);
     setPreviewOpen(true);
   };
+
+  const inner = (
+    <>
+      <AssetThumb asset={asset} />
+      <span className='min-w-0'>
+        <span className='block truncate font-medium group-hover:underline'>{asset.title}</span>
+        {openInEditor && (
+          <span className='text-muted-foreground block truncate text-xs'>
+            AI 整版 · 打开编辑生成预览
+          </span>
+        )}
+      </span>
+    </>
+  );
+
+  if (openInEditor) {
+    return (
+      <Link
+        href={`/dashboard/design/${asset.id}`}
+        className='group flex min-w-0 items-center gap-3 text-left'
+      >
+        {inner}
+      </Link>
+    );
+  }
 
   return (
     <>
@@ -43,8 +76,7 @@ function AssetTitleCell({ asset }: { asset: Asset }) {
         onClick={openPreview}
         className='group flex min-w-0 items-center gap-3 text-left'
       >
-        <AssetThumb asset={asset} />
-        <span className='truncate font-medium group-hover:underline'>{asset.title}</span>
+        {inner}
       </button>
       {previewMounted && (
         <AssetPreviewDialog assetId={asset.id} open={previewOpen} onOpenChange={setPreviewOpen} />
@@ -57,17 +89,25 @@ function AssetTitleCell({ asset }: { asset: Asset }) {
  * 行首缩略图：图片/设计资产经同源 /raw 代理加载 36px 预览（设计取导出 PNG），
  * 视频资产经 /raw?snapshot=1 加载 OSS 截帧封面 + 播放图标 overlay（列表不渲染 <video>，
  * 避免 10+ 视频并发预加载阻塞页面）；文本类资产与加载失败回退为类型图标 tile；
+ * 无预览的 design（AI 整版首轮）直接走占位 tile，不发必然 404 的 /raw 请求；
  * bg-muted 兼作暗色下透明图底色。
  */
 function AssetThumb({ asset }: { asset: Asset }) {
   const [failed, setFailed] = useState(false);
   const { icon: KindIcon } = getAssetKindMeta(asset.kind);
   const isVideo = asset.kind === 'video';
-  const isVisual = (asset.kind === 'image' || asset.kind === 'design' || isVideo) && !failed;
+  const placeholder = isPreviewlessDesign(asset);
+  const isVisual =
+    !placeholder && (asset.kind === 'image' || asset.kind === 'design' || isVideo) && !failed;
 
   if (!isVisual) {
     return (
-      <span className='bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md'>
+      <span
+        className={cn(
+          'bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md',
+          placeholder && 'border-border border border-dashed bg-transparent'
+        )}
+      >
         <KindIcon className='size-4' />
       </span>
     );

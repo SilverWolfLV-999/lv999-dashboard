@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Icons, type Icon } from '@/components/icons';
 import { cn } from '@/lib/utils';
-import type { DesignObject, DesignObjectType } from '../api/types';
+import type { DesignObject, DesignObjectType, TextAlign } from '../api/types';
 import { CANVAS_PRESETS, FILL_SWATCHES, FONT_SIZE_PRESETS } from '../constants/canvas';
 import type { ObjectPatch, ObjectPatchEntry } from '../hooks/use-editor-reducer';
 import { objectBounds, unionBox } from '../lib/document';
@@ -26,6 +26,17 @@ const OBJECT_TYPE_META: Record<DesignObjectType, { label: string; icon: Icon }> 
   text: { label: '文字', icon: Icons.text },
   image: { label: '图片', icon: Icons.media }
 };
+
+/**
+ * 文字水平对齐选项（Konva Text align）。
+ * align 仅在文字设了换行宽度 width 时可见生效，故无 width 的自由文字不展示该组
+ * （AI 整版产出的标题/副标题均带 width，可在此调整对齐）。
+ */
+const TEXT_ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
+  { value: 'left', label: '左' },
+  { value: 'center', label: '中' },
+  { value: 'right', label: '右' }
+];
 
 function Swatches({
   value,
@@ -120,6 +131,27 @@ function ObjectProperties({ object }: { object: DesignObject }) {
                 onClick={() => commitObject(object.id, { fontSize: size })}
               >
                 {size}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {object.type === 'text' && object.width !== undefined && (
+        <div className='space-y-1.5'>
+          <span className='text-muted-foreground text-xs'>对齐</span>
+          <div className='grid grid-cols-3 gap-1.5' role='group' aria-label='文字对齐'>
+            {TEXT_ALIGN_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                variant={object.align === option.value ? 'secondary' : 'outline'}
+                size='sm'
+                aria-label={`${option.label}对齐`}
+                aria-pressed={object.align === option.value}
+                title={`${option.label}对齐`}
+                onClick={() => commitObject(object.id, { align: option.value })}
+              >
+                {option.label}
               </Button>
             ))}
           </div>

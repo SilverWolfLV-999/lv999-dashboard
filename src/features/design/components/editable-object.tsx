@@ -110,6 +110,7 @@ function EditableObjectImpl({
         fontStyle={object.fontStyle}
         fontFamily={TEXT_FONT_FAMILY}
         fill={object.fill}
+        align={object.align}
         {...(object.width ? { width: object.width } : {})}
         visible={!isEditing}
         {...handlers}

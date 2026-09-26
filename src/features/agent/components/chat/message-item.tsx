@@ -9,6 +9,7 @@ import { Message, MessageContent } from '@/components/ui/message';
 import { getAssetKindMeta } from '../../constants/kinds';
 import { parseAssetReferenceBlock, type ParsedAssetReference } from '../../lib/asset-reference';
 import { ToolAssetPart, type CreateAssetToolPart } from './tool-asset-part';
+import { ToolDesignPart, type DesignAssetToolPart } from './tool-design-part';
 import { ToolImagePart, type ImageAssetToolPart } from './tool-image-part';
 import { ToolVideoPart, type VideoAssetToolPart } from './tool-video-part';
 import { ToolKnowledgePart, type KnowledgeSearchToolPart } from './tool-knowledge-part';
@@ -102,6 +103,15 @@ export const MessageItem = memo(function MessageItem({
               <ToolVideoPart
                 key={index}
                 part={part as unknown as VideoAssetToolPart}
+                active={isActive}
+              />
+            );
+          }
+          if (isToolUIPart(part) && part.type === 'tool-composeDesign') {
+            return (
+              <ToolDesignPart
+                key={index}
+                part={part as unknown as DesignAssetToolPart}
                 active={isActive}
               />
             );

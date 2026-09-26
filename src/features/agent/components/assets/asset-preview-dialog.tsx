@@ -42,6 +42,8 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
   const notFound = error instanceof ApiError && error.status === 404;
   // 图片加载失败跟踪（按 URL 记录）：签名 URL 不校验对象存在性，行还在但 OSS 对象缺失时会 404
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  // 无预览的 design（AI 整版首轮，尚未在画布保存）：无 PNG 可看/可下，改为引导进画布
+  const previewlessDesign = data?.kind === 'design' && !data.previewUrl;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,6 +75,7 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
               type='button'
               onClick={() => void downloadAsset(assetId)}
               className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              disabled={previewlessDesign}
             >
               <Icons.download /> 下载
             </button>
@@ -117,6 +120,17 @@ export function AssetPreviewDialog({ assetId, open, onOpenChange }: AssetPreview
                       onError={() => setFailedUrl(data.previewUrl ?? null)}
                     />
                   )
+                ) : data.kind === 'design' ? (
+                  <div className='text-muted-foreground flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm'>
+                    <Icons.palette className='size-6' />
+                    <p>AI 整版设计尚无预览：打开画布编辑并保存后自动生成。</p>
+                    <Link
+                      href={`/dashboard/design/${assetId}`}
+                      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                    >
+                      <Icons.edit /> 打开编辑
+                    </Link>
+                  </div>
                 ) : (
                   <div className='text-muted-foreground p-6 text-sm'>图片加载中…</div>
                 ))}

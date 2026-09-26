@@ -102,6 +102,8 @@ function TextOverlayInput({ object, zoom, position, onCommit }: TextOverlayInput
         lineHeight: 1,
         fontFamily: TEXT_FONT_FAMILY,
         fontStyle: object.fontStyle,
+        // 与 Konva Text 的 align 同步（枚举值与 CSS text-align 同名），保证编辑态所见即所得
+        textAlign: object.align,
         color: object.fill,
         transform: `rotate(${object.rotation}deg)`,
         transformOrigin: '0 0',

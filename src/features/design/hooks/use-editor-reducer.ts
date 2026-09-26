@@ -1,5 +1,5 @@
 import { useReducer } from 'react';
-import type { DesignDocument, DesignObject } from '../api/types';
+import type { DesignDocument, DesignObject, TextAlign } from '../api/types';
 import { cloneObjectWithOffset, reorderObject, reorderObjects } from '../lib/document';
 
 /**
@@ -23,6 +23,8 @@ export type ObjectPatch = Partial<{
   fill: string;
   fontSize: number;
   fontStyle: string;
+  /** 文字水平对齐（仅 text 对象有意义；配合换行宽度 width 生效） */
+  align: TextAlign;
   cornerRadius: number;
   width: number;
   height: number;

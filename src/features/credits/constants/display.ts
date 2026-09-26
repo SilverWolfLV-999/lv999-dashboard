@@ -61,7 +61,7 @@ function readNumber(meta: Record<string, unknown>, key: string): number {
 
 /**
  * 流水 meta 摘要（详情列）：把计量明细渲染为一句话，如
- * 「对话 1.2K tokens」「视频 720P 5s」「图片编辑（I2I）」「知识库摄取 500 tokens」「发放：体验额度」。
+ * 「对话 1.2K tokens」「视频 720P 5s」「图片编辑（I2I）」「图片生成（整版设计主图）」「知识库摄取 500 tokens」「发放：体验额度」。
  */
 export function describeLedgerMeta(kind: string, meta: CreditLedgerMeta | null): string {
   const m = (meta ?? {}) as Record<string, unknown>;
@@ -72,7 +72,8 @@ export function describeLedgerMeta(kind: string, meta: CreditLedgerMeta | null):
       return total > 0 ? `对话 ${formatTokens(total)} tokens${aborted}` : `对话${aborted}`;
     }
     case 'image':
-      return m.edit ? '图片编辑（I2I）' : '图片生成';
+      // compose=true 为「一句话生成整版设计」内含的主图（design 落库本身不计费）
+      return m.edit ? '图片编辑（I2I）' : m.compose ? '图片生成（整版设计主图）' : '图片生成';
     case 'video': {
       const resolution = typeof m.resolution === 'string' ? m.resolution : '';
       const duration = readNumber(m, 'duration');

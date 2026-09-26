@@ -72,7 +72,8 @@ export function createShapeObject(type: 'rect' | 'circle' | 'text', center: Poin
     text: d.text,
     fontSize: d.fontSize,
     fill: d.fill,
-    fontStyle: d.fontStyle
+    fontStyle: d.fontStyle,
+    align: d.align
   };
 }
 

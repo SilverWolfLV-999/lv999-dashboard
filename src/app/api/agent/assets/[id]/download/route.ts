@@ -47,6 +47,12 @@ export async function GET(_request: Request, context: RouteContext) {
     return Response.redirect(url, 302);
   }
 
+  // design 无预览（AI 整版产出后尚未在画布保存）：content 是文档 JSON，不能当 PNG 下发；
+  // 前端已隐藏该入口，此处为防御（避免下载到内容是 JSON 的 .png）
+  if (asset.kind === 'design') {
+    return apiError(501, 'not_implemented', 'Design preview has not been generated yet');
+  }
+
   // 无 storageKey 且无内容：不可下载（理论不可达的兜底）
   if (asset.content === null) {
     return apiError(501, 'not_implemented', 'Asset content is not downloadable');

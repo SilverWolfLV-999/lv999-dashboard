@@ -34,6 +34,11 @@ export const circleObjectSchema = z.object({
   fill: z.string()
 });
 
+/** 文字水平对齐（Konva Text align）；仅在设置了换行宽度 width 时可见生效 */
+export const TEXT_ALIGN_VALUES = ['left', 'center', 'right'] as const;
+
+export type TextAlign = (typeof TEXT_ALIGN_VALUES)[number];
+
 export const textObjectSchema = z.object({
   ...baseObjectFields,
   type: z.literal('text'),
@@ -43,7 +48,9 @@ export const textObjectSchema = z.object({
   /** Konva fontStyle：'normal' | 'bold' | 'italic' | 'bold italic' */
   fontStyle: z.string().default('normal'),
   /** 换行宽度（可选）；缺省时文字不换行 */
-  width: z.number().positive().optional()
+  width: z.number().positive().optional(),
+  /** 水平对齐；老文档缺省默认左对齐（可选 + 默认 → 无需迁移） */
+  align: z.enum(TEXT_ALIGN_VALUES).default('left')
 });
 
 export const imageObjectSchema = z.object({

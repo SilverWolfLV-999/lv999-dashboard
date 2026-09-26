@@ -51,6 +51,11 @@ export interface Asset {
   favorite: boolean;
   mime: string | null;
   sizeBytes: number | null;
+  /**
+   * 是否已有二进制预览/产物（storageKey 非空）。
+   * AI 整版产出的 design 首轮无预览（预览由画布保存时客户端导出），列表据此显示占位。
+   */
+  hasPreview: boolean;
   createdAt: string;
   updatedAt: string;
 }

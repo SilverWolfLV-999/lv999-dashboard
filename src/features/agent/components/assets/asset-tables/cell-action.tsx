@@ -57,6 +57,8 @@ export function CellAction({ data }: CellActionProps) {
   const deleteMutation = useMutation(deleteAssetMutation);
 
   const importable = IMPORTABLE_KINDS.includes(data.kind);
+  // 无预览的 design（AI 整版首轮）无 PNG 可下：隐藏下载，引导先进画布保存生成预览
+  const downloadable = data.kind !== 'design' || data.hasPreview;
 
   // 首次打开后才挂载（挂载即触发 chunk 加载）；之后保持挂载以保留关闭动画
   const openPreview = (assetId: string = data.id) => {
@@ -143,9 +145,11 @@ export function CellAction({ data }: CellActionProps) {
                 <Icons.book className='mr-2 h-4 w-4' /> 加入知识库
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => void downloadAsset(data.id)}>
-              <Icons.download className='mr-2 h-4 w-4' /> 下载
-            </DropdownMenuItem>
+            {downloadable && (
+              <DropdownMenuItem onClick={() => void downloadAsset(data.id)}>
+                <Icons.download className='mr-2 h-4 w-4' /> 下载
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
               <Icons.trash className='mr-2 h-4 w-4' /> 删除
             </DropdownMenuItem>

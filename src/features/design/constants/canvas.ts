@@ -49,7 +49,13 @@ export const TEXT_FONT_FAMILY = 'Arial, sans-serif';
 export const OBJECT_DEFAULTS = {
   rect: { width: 320, height: 200, fill: '#3b82f6', cornerRadius: 12 },
   circle: { radius: 120, fill: '#8b5cf6' },
-  text: { text: '双击编辑文字', fontSize: 48, fill: '#0f172a', fontStyle: 'normal' }
+  text: {
+    text: '双击编辑文字',
+    fontSize: 48,
+    fill: '#0f172a',
+    fontStyle: 'normal',
+    align: 'left'
+  }
 } as const;
 
 /** 缩放范围（相对指针缩放 / 工具栏缩放） */

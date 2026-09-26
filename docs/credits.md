@@ -8,7 +8,7 @@ LV999 Dashboard 的**成本管控底座**：Agent 的对话 / 生图 / 生视频
 
 ## 1. 概览
 
-- **计费入口**（发起上游调用前 `checkBalance`，`balance > 0` 放行，否则 402）：对话 `chat`、图片（工具 + 直连生成/编辑端点）、视频（T2V/I2V 工具）、知识库摄取（新增/上传/重试）。
+- **计费入口**（发起上游调用前 `checkBalance`，`balance > 0` 放行，否则 402）：对话 `chat`、图片（工具 + 整版设计工具 + 直连生成/编辑端点）、视频（T2V/I2V 工具）、知识库摄取（新增/上传/重试）。
 - **扣费时机**：按真实 usage「**发起后按结果扣**」——对话在流 `onEnd` 按累计 token 结算；图片/视频在上游调用返回后按结果判定；知识库在摄取成功后按 embedding tokens 结算。
 - **计量**：后端按 token / 张 / 秒精算，前端只展示余额与流水，不暴露档位估算。
 - **余额展示**（不常驻）：账号下拉菜单显示余额 + `/dashboard/profile/credits` 看流水。
@@ -65,13 +65,15 @@ LV999 Dashboard 的**成本管控底座**：Agent 的对话 / 生图 / 生视频
 | 入口 | 拦截位置 | 拒绝形式 |
 | --- | --- | --- |
 | 对话 | `chat/route.ts` POST（限流后、建流前）| `apiError(402, 'insufficient_credits', …)` |
-| 图片（工具）| `createImageAssetTool`/`editImageAssetTool` execute 入口 | `throw new Error(INSUFFICIENT_CREDITS_MESSAGE)`（工具 output-error 展示中文）|
+| 图片（工具）| `createImageAssetTool`/`editImageAssetTool`/`composeDesignTool`（整版设计内含一次文生图）execute 入口 | `throw new Error(INSUFFICIENT_CREDITS_MESSAGE)`（工具 output-error 展示中文）|
 | 图片（直连生成）| `assets/generate` route（设计画布「AI 生成图片」，限流后、调用前）| `apiError(402, …)` |
 | 图片（直连编辑）| `assets/[id]/edit` route（资产行「继续修改」+ 设计画布「AI 修改」）| `apiError(402, …)` |
 | 视频（工具）| `createVideoAssetTool`/`createVideoFromImageAssetTool` execute（与 video 限流并列）| `throw new Error(INSUFFICIENT_CREDITS_MESSAGE)` |
 | 知识库摄取 | `POST /documents`、`/documents/upload`、`/documents/[id]/retry` | `apiError(402, …)` |
 
 文案单一来源 [`constants/credits.ts`](../src/features/credits/constants/credits.ts)：`INSUFFICIENT_CREDITS_MESSAGE`（中文，工具/前端展示）+ `INSUFFICIENT_CREDITS_API_MESSAGE`（英文，错误信封）。
+
+> **不计费的产出**：`composeDesign` 的 design 落库为纯 JSON 组装（不调付费 API），只对其内含的一次文生图按 image 档扣费；本地图片上传（`assets/upload`）仅存储，同样不扣费。
 
 ---
 
@@ -102,7 +104,7 @@ chargeOnGenerationResult({ userId, kind, run, buildCharge, fallbackCharge })
 ```
 - `run()` 内含「上游生成 + 转存落库」；调用方须在 `run()` 前自行 `checkBalance`。
 - 图片：`priceImage(isEdit)`；视频：`priceVideo(resolution, duration)`（成功用 `generateVideoAsset` 回吐的实际 resolution/duration，失败用入参兜底估算）。
-- **图片三个计费调用点同一口径**：聊天工具 `createImageAssetTool`（T2I，`priceImage(false)`）/ 直连生成端点 `assets/generate`（设计画布 AI 生图，T2I，`priceImage(false)`）/ 直连编辑端点 `assets/[id]/edit` 与聊天 `editImageAssetTool`（I2I，`priceImage(true)`，`meta.sourceAssetId` 记血缘）；流水 `meta` 均带 `assetId` 与 `edit` 标志。
+- **图片计费调用点同一口径**：聊天工具 `createImageAssetTool`（T2I，`priceImage(false)`）/ 聊天工具 `composeDesignTool`（整版设计内含的 T2I，`priceImage(false)`，`meta.compose=true`；其后的 design 落库不再计费）/ 直连生成端点 `assets/generate`（设计画布 AI 生图，T2I，`priceImage(false)`）/ 直连编辑端点 `assets/[id]/edit` 与聊天 `editImageAssetTool`（I2I，`priceImage(true)`，`meta.sourceAssetId` 记血缘）；流水 `meta` 均带 `assetId` 与 `edit` 标志。
 - 视频工具入口 `checkBalance` 与 `checkRateLimit('video', …)` 并列（任一不过即抛中文错误）。
 
 ### 6.3 知识库摄取（`knowledge/lib/{embeddings,ingest}.ts`）
@@ -138,7 +140,7 @@ chargeOnGenerationResult({ userId, kind, run, buildCharge, fallbackCharge })
 
 - **账号下拉余额**（[`app-sidebar.tsx`](../src/components/layout/app-sidebar.tsx) 的 `SidebarFooter` DropdownMenu）：`<SidebarCreditsItem enabled={userMenuOpen} />`——受控 `open` 时才查 `GET /api/agent/credits`（`balanceQueryOptions`，`staleTime=30s`），**不常驻轮询**；点击进 `/dashboard/profile/credits`。
 - **流水页** `/dashboard/profile/credits/page.tsx`（**具体路由，避开 `profile/[[...profile]]` catch-all**）：`credits-listing`（服务端预取）+ `credits-tables/*`（客户端 data-table，复用 `useDataTable` + `ledgerQueryOptions` + nuqs）+ `credits-balance-banner`。列 = 时间 / 类型徽标 / 变动 ± / 变动后余额 / 详情。
-- **流水展示元数据**（[`constants/display.ts`](../src/features/credits/constants/display.ts)）：`CREDIT_KIND_LABELS`（发放/对话/图片/视频/知识库）+ `describeLedgerMeta` 把 meta 渲染为一句话（「对话 1.2K tokens（已停止）」「视频 720P 5s」「图片编辑（I2I）」「知识库摄取 500 tokens」「发放：体验额度」）。
+- **流水展示元数据**（[`constants/display.ts`](../src/features/credits/constants/display.ts)）：`CREDIT_KIND_LABELS`（发放/对话/图片/视频/知识库）+ `describeLedgerMeta` 把 meta 渲染为一句话（「对话 1.2K tokens（已停止）」「视频 720P 5s」「图片编辑（I2I）」「图片生成（整版设计主图）」「知识库摄取 500 tokens」「发放：体验额度」）。
 - **402 文案映射**：`chat-window.tsx`（`DefaultChatTransport` 对非 2xx 抛 `Error(text)`，解析信封 `code==='insufficient_credits'` → 中文）、`image-edit-dialog.tsx` / `add-document-dialog.tsx`（`ApiError.status===402` → `INSUFFICIENT_CREDITS_MESSAGE`）、设计画布 `ai-generate-dialog.tsx` / `ai-edit-dialog.tsx`（经共用 [`design/lib/ai-image-error.ts`](../src/features/design/lib/ai-image-error.ts) 的 `resolveAiImageError`：402 → `INSUFFICIENT_CREDITS_MESSAGE`，429/413/404 → 中文提示，`code==='generation_failed'` → 服务端透传的中文生成错误原样展示）。
 
 ---

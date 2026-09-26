@@ -75,6 +75,8 @@ function toAsset(row: AssetRow): Asset {
     favorite: row.favorite,
     mime: row.mime,
     sizeBytes: row.sizeBytes,
+    // 列表缩略图/下载均依赖 storageKey（无预览的 design 显示占位，不外露 key 本身）
+    hasPreview: row.storageKey !== null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };

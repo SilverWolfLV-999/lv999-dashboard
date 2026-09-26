@@ -2,7 +2,7 @@ import { ToolLoopAgent, isStepCount, tool, type InferUITools, type UIMessage } f
 import { z } from 'zod';
 import { DEFAULT_MODEL, isModelKey } from '../constants/models';
 import { getSkill } from '../constants/skills';
-import { ASPECT_KEYS, ASPECT_PRESETS } from '../constants/image-models';
+import { ASPECT_KEYS, ASPECT_PRESETS, type AspectKey } from '../constants/image-models';
 import { DEFAULT_I2V_MODEL, VIDEO_ASPECT_KEYS } from '../constants/video-models';
 import { resolveModel } from './provider';
 import { generateImage } from './image-generation';
@@ -13,9 +13,23 @@ import {
   VIDEO_RATE_WINDOW_SECONDS
 } from './video-generation';
 import { checkRateLimit } from './rate-limit';
-import { createAsset, createImageAsset, createVideoAsset, getAsset, searchAssets } from './service';
+import {
+  createAsset,
+  createDesignAsset,
+  createImageAsset,
+  createVideoAsset,
+  getAsset,
+  searchAssets
+} from './service';
 import { ASSET_KIND_VALUES } from './types';
 import { searchKnowledgeByText } from '@/features/knowledge/lib/search';
+import {
+  DEFAULT_LAYOUT_ASPECT,
+  LAYOUT_KEYS,
+  composeDesignDocument,
+  imageRegionRatio
+} from '@/features/design/lib/layouts';
+import { readImageDimensions } from '../lib/upload-image';
 import { checkBalance } from '@/features/credits/api/service';
 import { chargeOnGenerationResult } from '@/features/credits/lib/billing';
 import { priceImage, priceVideo } from '@/features/credits/lib/pricing';
@@ -64,7 +78,16 @@ const AGENT_INSTRUCTIONS = `你是「Agent 创作工作台」的编排 Agent，�
     - 参数选择：默认 16:9 / 5s；竖版短视频用 9:16；用户显式指定时按用户要求
     - I2V：基于已有图片资产生成动态版本，用 createVideoFromImageAsset（sourceAssetId 传图片 id）
     - 成本约束：一次对话不要生成多个视频；用户要求“再来一版”时先确认是否真的需要
-    - 失败处理：超时 / 内容审核 / 网络错误 → 如实告知用户，不要重试超过 1 次`;
+    - 失败处理：超时 / 内容审核 / 网络错误 → 如实告知用户，不要重试超过 1 次
+12. 整版设计（composeDesign）：
+    - 何时用：用户要“一张封面 / 海报 / 头图”，且需要把标题文字与图片排成完整版面时
+    - 与 createImageAsset 的区别：只要一张图（文字画在图里或不需要文字）→ createImageAsset；
+      要“图 + 可编辑标题文字”的整版 → composeDesign（文字以画布文字对象排布，用户可继续改）
+    - imagePrompt 只描述画面，不要要求模型在图里写标题文字（标题由版式排上去，避免重字）
+    - layout 选择：上图下文用 "top-image"（封面常用）；图为主视觉、标题压在底部用 "full-image-bar"；
+      横版左图右文用 "left-image"（竖版会自动退化为上图下文）
+    - 一次对话不要多次调用；内含一次文生图（约 20-70 秒），调用前告知用户等待
+    - 产出无预览缩略图（用户打开画布保存后生成），告知用户点卡片去画布微调即可`;
 
 const CREATE_ASSET_DESCRIPTION =
   '把一份完整作品保存为结构化资产。Markdown 文章/文案用 kind=markdown；完整 HTML 网页用 kind=html（必须是可以直接打开运行的完整文档，样式与脚本内联）。';
@@ -111,6 +134,31 @@ const editImageAssetInputSchema = z.object({
     .enum(ASPECT_KEYS)
     .optional()
     .describe('可选：改变输出比例（不传则延续源图构图；需要竖版封面用 "3:4"）')
+});
+
+const COMPOSE_DESIGN_DESCRIPTION =
+  '一句话产出「整版设计」（封面 / 海报 / 头图）：内部先文生图，再按版式模板把主图与标题 / 副标题排好版，产出可在设计画布继续编辑的 design 资产（文字为可编辑对象，非烧录到图里）。用户要「做一张…封面，标题是…」这类图文整版需求时用本工具；只要一张图时用 createImageAsset。imagePrompt 只描述画面（不要要求在图里写标题文字）；调用前先想好版式与文案；一次对话不要多次调用。';
+
+const composeDesignInputSchema = z.object({
+  title: z.string().min(1).max(100).describe('设计资产标题'),
+  imagePrompt: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe(
+      '主图文生图提示词：完整自包含的画面描述（中文优先，主体/风格/构图/色调/氛围）。不要要求画面里出现标题文字，文字由版式排上去'
+    ),
+  heading: z.string().max(60).optional().describe('可选：主标题文字（排入版面）；不传则用 title'),
+  subheading: z.string().max(120).optional().describe('可选：副标题 / 一句话说明；不需要时省略'),
+  layout: z
+    .enum(LAYOUT_KEYS)
+    .describe(
+      '版式："top-image" 上图下文（封面常用）；"full-image-bar" 全图 + 底部半透明标题条（图为主视觉）；"left-image" 左图右文（横版头图，竖版自动退化为上图下文）'
+    ),
+  aspect: z
+    .enum(ASPECT_KEYS)
+    .optional()
+    .describe('可选：画布比例。竖版小红书封面 "3:4"、横版头图 "16:9"、方形 "1:1"；不传默认 "3:4"')
 });
 
 const videoAspectFieldSchema = z
@@ -228,6 +276,10 @@ export const agentValidationTools = {
   knowledgeSearch: tool({
     description: KNOWLEDGE_SEARCH_DESCRIPTION,
     inputSchema: knowledgeSearchInputSchema
+  }),
+  composeDesign: tool({
+    description: COMPOSE_DESIGN_DESCRIPTION,
+    inputSchema: composeDesignInputSchema
   })
 };
 
@@ -587,6 +639,106 @@ function knowledgeSearchTool(params: { userId: string }) {
   });
 }
 
+/** "宽*高" 尺寸档 → 像素尺寸（sharp 读不到主图自然尺寸时的回退，供版式 contain 适配） */
+function parsePixelSize(size: string): { width: number; height: number } | null {
+  const [width, height] = size.split('*').map(Number);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * 从文生图比例档中挑与目标宽高比最接近的一档。
+ * 整版设计的主图比例按**版式的主图区域**选（而非画布比例），
+ * 这样 contain 适配后几乎不留白（画布比例仍由 aspect 决定，两者可不同）。
+ */
+function nearestAspect(targetRatio: number): AspectKey {
+  let best: AspectKey = '1:1';
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const key of ASPECT_KEYS) {
+    const size = parsePixelSize(ASPECT_PRESETS[key]);
+    if (!size) continue;
+    const diff = Math.abs(size.width / size.height - targetRatio);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = key;
+    }
+  }
+  return best;
+}
+
+/**
+ * 整版设计工具：文生图（计费 image 档）→ 版式组装（服务端纯函数，布局质量不交给模型）
+ * → design 资产落库（previewPng=null：服务端渲染中文字体不可靠，预览由画布保存时客户端导出补上）。
+ * 主图仍沉淀为独立 image 资产（可在「我的资产」复用）；design 落库为纯 JSON 组装、不调付费 API → 不额外计费。
+ */
+function composeDesignTool(params: { userId: string; conversationId: string }) {
+  return tool({
+    description: COMPOSE_DESIGN_DESCRIPTION,
+    inputSchema: composeDesignInputSchema,
+    execute: async (
+      { title, imagePrompt, heading, subheading, layout, aspect },
+      { abortSignal }
+    ) => {
+      // 计费入口拦截：余额 ≤0 直接拒绝（不发起上游调用）
+      if (!(await checkBalance(params.userId))) {
+        throw new Error(INSUFFICIENT_CREDITS_MESSAGE);
+      }
+      const resolvedAspect = aspect ?? DEFAULT_LAYOUT_ASPECT;
+      // 主图按版式区域比例生成（贴合区域 → contain 后几乎无留白），画布仍用 aspect
+      const size = ASPECT_PRESETS[nearestAspect(imageRegionRatio(layout, resolvedAspect))];
+      // 主图生成与 createImageAsset 工具同源（同一计费包裹、billable 分类、abort 透传）
+      const generated = await chargeOnGenerationResult({
+        userId: params.userId,
+        kind: 'image',
+        fallbackCharge: { cost: priceImage(false), meta: { edit: false, compose: true } },
+        run: async () => {
+          const { imageBuffer, mime } = await generateImage({
+            prompt: imagePrompt,
+            size,
+            signal: abortSignal
+          });
+          // 版式需要主图真实比例做 contain 适配；sharp 读失败时回退请求的尺寸档
+          const natural = (await readImageDimensions(imageBuffer)) ?? parsePixelSize(size);
+          const asset = await createImageAsset({
+            userId: params.userId,
+            conversationId: params.conversationId,
+            title: `${title}·主图`,
+            prompt: imagePrompt,
+            imageBuffer,
+            mime
+          });
+          return { asset, natural };
+        },
+        buildCharge: (created) => ({
+          cost: priceImage(false),
+          meta: { assetId: created.asset.id, edit: false, compose: true }
+        })
+      });
+
+      // 组装与 sanitize 均为纯函数（内部已兜底回落），不因排版问题浪费已生成并扣费的主图
+      const composed = composeDesignDocument({
+        layout,
+        aspect: resolvedAspect,
+        image: { assetId: generated.asset.id, natural: generated.natural },
+        text: { heading: heading?.trim() || title, subheading }
+      });
+      const design = await createDesignAsset({
+        userId: params.userId,
+        title,
+        document: JSON.stringify(composed),
+        previewPng: null
+      });
+      // 返回结构与其他资产工具对齐；kind='design' 由对话内 design 卡片渲染为「打开编辑」
+      return {
+        assetId: design.id,
+        title,
+        kind: 'design' as const,
+        sizeBytes: design.sizeBytes,
+        imageAssetId: generated.asset.id
+      };
+    }
+  });
+}
+
 /**
  * 对话 usage 累加器（route 创建并传入 buildAgent）。
  * onStepEnd 把每步 usage 累加进去（对已完成的步触发，含 abort 前的步），
@@ -627,7 +779,8 @@ export function buildAgent(params: {
       createVideoFromImageAsset: createVideoFromImageAssetTool(params),
       findAssets: findAssetsTool(params),
       readAsset: readAssetTool(params),
-      knowledgeSearch: knowledgeSearchTool(params)
+      knowledgeSearch: knowledgeSearchTool(params),
+      composeDesign: composeDesignTool(params)
     },
     stopWhen: isStepCount(6),
     // totalMs 必须 ≥ 视频轮询上限（VIDEO_POLL_TIMEOUT_MS=280s）+ 转存/落库开销，

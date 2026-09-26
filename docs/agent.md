@@ -11,7 +11,7 @@ LV999 Dashboard 在后台骨架之上长出的核心业务模块：把「自然�
 
 - **入口**：`/dashboard/agent`（新建会话）与 `/dashboard/agent/[conversationId]`（会话页）；产出在 `/dashboard/assets`（我的资产）统一管理。
 - **编排**：AI SDK v7 `ToolLoopAgent`，每请求无状态构建，上下文经闭包注入工具。
-- **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）、`createVideoAsset`（文生视频 T2V）、`createVideoFromImageAsset`（图生视频 I2V）、`findAssets` / `readAsset`（资产复用）、`knowledgeSearch`（知识库语义检索）。
+- **工具**：`createAsset`（Markdown / HTML）、`createImageAsset`（文生图 T2I）、`editImageAsset`（图生图 I2I）、`createVideoAsset`（文生视频 T2V）、`createVideoFromImageAsset`（图生视频 I2V）、`composeDesign`（一句话生成整版设计）、`findAssets` / `readAsset`（资产复用）、`knowledgeSearch`（知识库语义检索）。
 - **流式**：`resumable-stream` 可恢复 SSE，刷新 / 切回自动重连；停止走专用端点（跨实例真取消）。
 - **持久化**：Drizzle ORM + PostgreSQL，三张表 `conversations` / `messages` / `assets`；图片 / 视频二进制存 OSS，库里只存 `storageKey`。
 - **计费**：对话 / 生图 / 生视频 / 知识库摄取均经 Credits `checkBalance` 入口拦截（余额 ≤0 返回 402）、按真实 usage「发起后按结果扣」，杜绝陌生人刷爆作者 API Key；额度由管理员经**用户管理后台** `/dashboard/admin/users` 发放 / 设定（仅 `ADMIN_USER_IDS` 白名单）；详见 [docs/credits.md](./credits.md)。
@@ -173,10 +173,11 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 | `findAssets` | `query?` / `kind?` / `limit?` | 按标题关键词 + 类型检索用户资产库，返回候选元信息（不含正文/URL）——按【标题】找「作品」供复用/改写 |
 | `readAsset` | `assetId` | 读取资产内容：markdown/html 返回正文、image/video 返回生成 prompt（design 不支持），供“基于它再创作” |
 | `knowledgeSearch` | `query` / `topK?` | 在 RAG 知识库中按【语义】检索「资料」片段（问答/综述），返回 topK 片段 + 来源标题；见 [docs/knowledge-base.md](./knowledge-base.md) |
+| `composeDesign` | `title` / `imagePrompt` / `heading?` / `subheading?` / `layout`(top-image\|full-image-bar\|left-image) / `aspect?` | **一句话生成整版设计**：`checkBalance` → 文生图（计费 image 档，比例按**版式主图区域**选最接近的一档）→ `createImageAsset`（主图仍沉淀为独立资产）→ `sharp` 读自然尺寸 → [`design/lib/layouts.ts`](../src/features/design/lib/layouts.ts) 按版式组装文档（坐标/字号/对齐全由代码计算）+ sanitize → `createDesignAsset(previewPng=null)`；返回 `{ assetId, title, kind:'design', sizeBytes, imageAssetId }`，对话内渲染「打开编辑」卡片。design 落库为纯 JSON 组装，**不额外计费**；无预览（预览由画布保存时客户端导出补上）。详见 [docs/design-editor.md](./design-editor.md) |
 
 > 区分：`findAssets` 按标题找「作品」（复用/改写/改图）；`knowledgeSearch` 按语义找「资料」（基于内容作答并标注来源）。对话中的 `[引用资产]` 块给出的 id 可直接使用，无需再检索。
 
-工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema，全部 8 个工具均同时登记到 validation 集与 `buildAgent.tools`），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
+工具校验用 `agentValidationTools`（与执行工具共享同一 Zod schema，全部 9 个工具均同时登记到 validation 集与 `buildAgent.tools`），配合 `validateUIMessages` 对历史消息做进入模型前的校验（畸形历史 → 400 而非 500）。
 
 ### 5.1 技能系统（专家模式）
 
@@ -198,7 +199,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 - **图片 / 视频资产**：应用层预生成 `assetId` → 转存 OSS → 一次性 insert 全字段；`content` 列存生成 prompt（可溯源 / 可重试）。视频封面经 OSS 原生截帧（`videoSnapshotUrl`）动态生成，经 `/raw?snapshot=1` 同源代理下发（列表不渲染 `<video>`）。
 - **血缘**：I2I 产物与 I2V 产物通过 `sourceAssetId` 指向源图；预览弹窗展示「基于《源标题》修改」；源图删除后 `SET NULL`，派生资产仍可访问。
 - **收藏**（`favorite` boolean 列）：任意 kind 可收藏；列表支持「仅看收藏」筛选（`AssetFilters.favorite`）；切换走 `POST /api/agent/assets/[id]/favorite`（限流 60 次/分）。
-- **下载**（[`assets/[id]/download`](../src/app/api/agent/assets/[id]/download/route.ts)）：有 `storageKey` → 302 跳转带附件名的短期签名 URL（TTL 300s）；文本资产直接返回 `content`。
+- **下载**（[`assets/[id]/download`](../src/app/api/agent/assets/[id]/download/route.ts)）：有 `storageKey` → 302 跳转带附件名的短期签名 URL（TTL 300s）；文本资产直接返回 `content`；**无预览的 design**（`composeDesign` 首轮产出）返回 501（`content` 是文档 JSON，不能当 PNG 下发），前端相应隐藏下载入口。
 - **删除**：删 DB 行的同时顺带删 OSS 对象（失败仅告警不阻塞）。
 - **批量删除**（[`assets/batch-delete`](../src/app/api/agent/assets/batch-delete/route.ts)）：单次最多 100 个 uuid，逐个走 `deleteAsset`（含所有权校验与 OSS 清理）；不存在的 id 静默跳过，返回实际删除计数；全部未命中时 404。限流 10 次/分。
 - **直连图片编辑**（[`assets/[id]/edit`](../src/app/api/agent/assets/[id]/edit/route.ts)）：图片资产行操作「继续修改」与设计画布「AI 修改」直连 I2I（不经聊天），核心流程与聊天内 `editImageAsset` 工具复用（[`image-edit.ts`](../src/features/agent/api/image-edit.ts) 的 `editImageAssetCore`）；产出派生资产（`sourceAssetId` 记录血缘），返回新资产 id。限流 20 次/分（I2I 是付费模型调用 ≈0.20 元/次）。
@@ -313,7 +314,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 ### Credits 计费（402 余额不足）
 
-所有付费 API 入口（对话 / 图片工具 / 直连图片生成与编辑 / 视频工具 / 知识库摄取）在发起上游调用前经 `checkBalance`（`balance > 0`）拦截，余额不足返回 **402 `insufficient_credits`**（工具入口抛中文错误由卡片展示）。扣费按真实 usage「发起后按结果扣」：对话在流 `onEnd` 按累计 token 结算（`usageSink` 经 `onStepEnd` 桥接）；图片/视频经 `chargeOnGenerationResult`（成功/abort/超时/下载失败照扣，鉴权/参数/限流/**内容审核拒绝**不扣）；知识库摄取按 embedding tokens。完整计费规则、定价与数据模型见 [docs/credits.md](./credits.md)。
+所有付费 API 入口（对话 / 图片工具 / 整版设计工具（内含一次文生图）/ 直连图片生成与编辑 / 视频工具 / 知识库摄取）在发起上游调用前经 `checkBalance`（`balance > 0`）拦截，余额不足返回 **402 `insufficient_credits`**（工具入口抛中文错误由卡片展示）。扣费按真实 usage「发起后按结果扣」：对话在流 `onEnd` 按累计 token 结算（`usageSink` 经 `onStepEnd` 桥接）；图片/视频经 `chargeOnGenerationResult`（成功/abort/超时/下载失败照扣，鉴权/参数/限流/**内容审核拒绝**不扣）；知识库摄取按 embedding tokens。完整计费规则、定价与数据模型见 [docs/credits.md](./credits.md)。
 
 ---
 
