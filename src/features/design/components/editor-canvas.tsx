@@ -226,9 +226,11 @@ export function EditorCanvas() {
     const transformer = transformerRef.current;
     if (!transformer) return;
     const all = objectsRef.current;
+    // 循环前一次建 id 索引，避免每节点在 objects 里线性 find
+    const objectById = new Map(all.map((item) => [item.id, item]));
     const patches: ObjectPatchEntry[] = [];
     for (const node of transformer.nodes()) {
-      const object = all.find((item) => item.id === node.id());
+      const object = objectById.get(node.id());
       if (!object) continue;
       // 注册表挂载的均为 Shape（Rect/Circle/Text/Image）；Transformer.nodes() 类型放宽为 Node
       const shape = node as Konva.Shape;

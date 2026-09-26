@@ -114,7 +114,7 @@ export async function listUsers(filters: AdminUserFilters): Promise<AdminUsersRe
  * 2. **DB 事务**：先收集 assets 的 storageKey 与预数 messages，再按 userId 删各表——
  *    `messages` 无 userId 列，靠 `conversations` 的 ON DELETE CASCADE 清理；`knowledgeChunks` 显式按 userId 删 +
  *    `knowledgeDocuments` 的 CASCADE 兜底；其余表跨表外键均 cascade / set null，无 restrict 阻塞。
- * 3. **OSS 清理**：逐个删步骤 2 收集的 storageKey，失败仅 `console.warn` 不阻塞（沿用 deleteAsset 模式）。
+ * 3. **OSS 清理**：并发删除步骤 2 收集的 storageKey（固定并发分批），失败仅 `console.warn` 不阻塞（沿用 deleteAsset 模式）。
  */
 export async function deleteUserCascade(userId: string): Promise<DeleteUserResult> {
   // 1. 先 Clerk 删号（断登录）；已删则幂等继续
@@ -190,16 +190,28 @@ export async function deleteUserCascade(userId: string): Promise<DeleteUserResul
     };
   });
 
-  // 3. OSS 清理（失败仅告警不阻塞：DB 行已删，残留对象无访问路径）
-  let ossObjects = 0;
-  for (const key of storageKeys) {
-    try {
-      await getOssClient().delete(key);
-      ossObjects += 1;
-    } catch (error) {
-      console.warn('[admin] failed to delete OSS object:', { key, error });
-    }
-  }
+  // 3. OSS 清理（失败仅告警不阻塞：DB 行已删，残留对象无访问路径）；各对象互不依赖，
+  // 按固定并发分批删除（单请求内复用同一 client，避免每 key 新建一次）
+  const oss = getOssClient();
+  const OSS_DELETE_CONCURRENCY = 8;
+  const deleteBatches = await Promise.all(
+    Array.from({ length: Math.ceil(storageKeys.length / OSS_DELETE_CONCURRENCY) }, (_, batch) =>
+      Promise.all(
+        storageKeys
+          .slice(batch * OSS_DELETE_CONCURRENCY, (batch + 1) * OSS_DELETE_CONCURRENCY)
+          .map(async (key) => {
+            try {
+              await oss.delete(key);
+              return true;
+            } catch (error) {
+              console.warn('[admin] failed to delete OSS object:', { key, error });
+              return false;
+            }
+          })
+      )
+    )
+  );
+  const ossObjects = deleteBatches.flat().filter(Boolean).length;
 
   return { ...counts, ossObjects };
 }

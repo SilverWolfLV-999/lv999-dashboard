@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -81,6 +81,9 @@ export function AssetReferencePicker({
     placeholderData: keepPreviousData
   });
   const assets = data?.assets ?? [];
+  // 渲染逐项查表：Set 化避免每行在 referencedIds / selected 里线性扫描
+  const referencedIdSet = useMemo(() => new Set(referencedIds), [referencedIds]);
+  const selectedIdSet = useMemo(() => new Set(selected.map((item) => item.id)), [selected]);
 
   const toggleSelect = (asset: ReferencedAsset) => {
     setSelected((prev) =>
@@ -157,8 +160,8 @@ export function AssetReferencePicker({
               <ul className='flex flex-col gap-1.5'>
                 {assets.map((asset) => {
                   const { label, icon: KindIcon } = getAssetKindMeta(asset.kind);
-                  const alreadyReferenced = referencedIds.includes(asset.id);
-                  const isSelected = selected.some((item) => item.id === asset.id);
+                  const alreadyReferenced = referencedIdSet.has(asset.id);
+                  const isSelected = selectedIdSet.has(asset.id);
                   return (
                     <li key={asset.id}>
                       <button

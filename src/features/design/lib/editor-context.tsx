@@ -9,6 +9,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -300,14 +301,17 @@ export function EditorProvider({
   );
 
   // 「在画布使用」预置图片：挂载后经同源 /raw 代理加载取自然尺寸，
-  // 复用 insertImage 按比例适配并居中插入（不自动保存，等用户操作）
+  // 复用 insertImage 按比例适配并居中插入（不自动保存，等用户操作）。
+  // load 回调经 Effect Event 调用 insertImage：始终读最新实现，
+  // 其引用变化不再触发 effect 重跑；initialImageAssetId 保留为响应式依赖
   const initialImageInsertedRef = useRef(false);
+  const insertImageEvent = useEffectEvent(insertImage);
   useEffect(() => {
     if (!initialImageAssetId || initialImageInsertedRef.current) return;
     initialImageInsertedRef.current = true;
     const image = new window.Image();
     image.addEventListener('load', () => {
-      insertImage(initialImageAssetId, {
+      insertImageEvent(initialImageAssetId, {
         width: image.naturalWidth,
         height: image.naturalHeight
       });
@@ -316,7 +320,7 @@ export function EditorProvider({
       toast.error('预置图片加载失败，可在工具栏「插入图片」中重新选择');
     });
     image.src = assetRawUrl(initialImageAssetId);
-  }, [initialImageAssetId, insertImage]);
+  }, [initialImageAssetId]);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -453,105 +457,97 @@ export function EditorProvider({
     }
   }, [assetId, createDesign, updateDesign, router, savedSnapshot]);
 
-  // 键盘快捷键（文字编辑态让位于原生输入，避免抢键/破坏 IME）
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (editingTextId) {
-        if (event.key === 'Escape') endTextEdit();
-        return;
+  // 键盘快捷键（文字编辑态让位于原生输入，避免抢键/破坏 IME）。
+  // 整体作为 Effect Event：处理时读最新 state/回调（editingTextId、save、undo 等），
+  // 监听仅在挂载时注册一次，不随这些回调的引用变化反复解绑/绑定
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (editingTextId) {
+      if (event.key === 'Escape') endTextEdit();
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    ) {
+      return;
+    }
+    // 弹层打开时整体让位（插入图片 / AI 生成 / AI 修改 / 命令面板，均为 role='dialog'）：
+    // 焦点在弹层内时 Delete、方向键、Ctrl+C/V/D 不应改动画布（否则选中对象会被误删）
+    if (document.querySelector('[role="dialog"]')) {
+      return;
+    }
+    const mod = event.metaKey || event.ctrlKey;
+    const key = event.key.toLowerCase();
+    if (mod) {
+      switch (key) {
+        case 's':
+          event.preventDefault();
+          void save();
+          return;
+        case 'z':
+          event.preventDefault();
+          if (event.shiftKey) redo();
+          else undo();
+          return;
+        case 'y':
+          event.preventDefault();
+          redo();
+          return;
+        case 'c':
+          event.preventDefault();
+          copySelection();
+          return;
+        case 'v':
+          event.preventDefault();
+          paste();
+          return;
+        case 'd':
+          // Ctrl+D 默认为浏览器书签，必须 preventDefault
+          event.preventDefault();
+          duplicate();
+          return;
+        default:
+          break;
       }
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-      ) {
-        return;
-      }
-      // 弹层打开时整体让位（插入图片 / AI 生成 / AI 修改 / 命令面板，均为 role='dialog'）：
-      // 焦点在弹层内时 Delete、方向键、Ctrl+C/V/D 不应改动画布（否则选中对象会被误删）
-      if (document.querySelector('[role="dialog"]')) {
-        return;
-      }
-      const mod = event.metaKey || event.ctrlKey;
-      const key = event.key.toLowerCase();
-      if (mod) {
-        switch (key) {
-          case 's':
-            event.preventDefault();
-            void save();
-            return;
-          case 'z':
-            event.preventDefault();
-            if (event.shiftKey) redo();
-            else undo();
-            return;
-          case 'y':
-            event.preventDefault();
-            redo();
-            return;
-          case 'c':
-            event.preventDefault();
-            copySelection();
-            return;
-          case 'v':
-            event.preventDefault();
-            paste();
-            return;
-          case 'd':
-            // Ctrl+D 默认为浏览器书签，必须 preventDefault
-            event.preventDefault();
-            duplicate();
-            return;
-          default:
-            break;
-        }
-      }
-      if (event.key === 'Escape') {
-        clearSelection();
-        return;
-      }
-      const current = stateRef.current;
-      if (current.selectedIds.length === 0) return;
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault();
-        removeObjects(current.selectedIds);
-        return;
-      }
-      const arrows: Record<string, Point> = {
-        ArrowUp: { x: 0, y: -1 },
-        ArrowDown: { x: 0, y: 1 },
-        ArrowLeft: { x: -1, y: 0 },
-        ArrowRight: { x: 1, y: 0 }
-      };
-      const delta = arrows[event.key];
-      if (delta) {
-        event.preventDefault();
-        const step = event.shiftKey ? 10 : 1;
-        const idSet = new Set(current.selectedIds);
-        const patches = current.present.objects
-          .filter((object) => idSet.has(object.id))
-          .map((object) => ({
-            id: object.id,
-            patch: { x: object.x + delta.x * step, y: object.y + delta.y * step }
-          }));
-        if (patches.length > 0) commitObjects(patches);
-      }
+    }
+    if (event.key === 'Escape') {
+      clearSelection();
+      return;
+    }
+    const current = stateRef.current;
+    if (current.selectedIds.length === 0) return;
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      removeObjects(current.selectedIds);
+      return;
+    }
+    const arrows: Record<string, Point> = {
+      ArrowUp: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    editingTextId,
-    endTextEdit,
-    save,
-    undo,
-    redo,
-    copySelection,
-    paste,
-    duplicate,
-    clearSelection,
-    removeObjects,
-    commitObjects
-  ]);
+    const delta = arrows[event.key];
+    if (delta) {
+      event.preventDefault();
+      const step = event.shiftKey ? 10 : 1;
+      const idSet = new Set(current.selectedIds);
+      const patches = current.present.objects
+        .filter((object) => idSet.has(object.id))
+        .map((object) => ({
+          id: object.id,
+          patch: { x: object.x + delta.x * step, y: object.y + delta.y * step }
+        }));
+      if (patches.length > 0) commitObjects(patches);
+    }
+  });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKeyDown(event);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, []);
 
   const selectedObjects = useMemo(() => {
     if (state.selectedIds.length === 0) return [];

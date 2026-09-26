@@ -46,14 +46,20 @@ export async function POST(request: Request) {
     return apiError(400, 'invalid_request', 'ids (1..100 uuid array) is required');
   }
 
-  // 去重后顺序删除：单次最多 100 个，DB 写 + OSS 删均为轻量操作，串行足够且避免打满连接池
+  // 去重后并发删除：单次最多 100 个，各 id 互不依赖；deleteAsset 内部已兜底 OSS 失败，
+  // 并发上限 10 即可避免瞬时打满 DB 连接池
   const ids = [...new Set(parsed.data.ids)];
-  let deleted = 0;
-  for (const id of ids) {
-    if (await deleteAsset(userId, id)) {
-      deleted += 1;
-    }
-  }
+  const DELETE_CONCURRENCY = 10;
+  const results = await Promise.all(
+    Array.from({ length: Math.ceil(ids.length / DELETE_CONCURRENCY) }, (_, batch) =>
+      Promise.all(
+        ids
+          .slice(batch * DELETE_CONCURRENCY, (batch + 1) * DELETE_CONCURRENCY)
+          .map((id) => deleteAsset(userId, id))
+      )
+    )
+  );
+  const deleted = results.flat().filter(Boolean).length;
   if (deleted === 0) {
     return apiError(404, 'not_found', 'No matching assets found');
   }

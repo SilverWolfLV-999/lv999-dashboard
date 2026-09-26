@@ -39,10 +39,11 @@ function parseInteger(value: string | null): number | undefined {
 /** 枚举筛选值（逗号分隔）：非法值直接丢弃，不返回 400，保持列表可用 */
 function parseEnumList(value: string | null, allowed: readonly string[]): string | undefined {
   if (!value) return undefined;
+  const allowedSet = new Set(allowed); // 单次建集，后续逐项 O(1) 查找
   const items = value
     .split(',')
     .map((item) => item.trim())
-    .filter((item) => allowed.includes(item));
+    .filter((item) => allowedSet.has(item));
   return items.length > 0 ? items.join(',') : undefined;
 }
 

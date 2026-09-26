@@ -24,16 +24,6 @@ const RECENT_LIMIT = 8;
 /** 类型分布固定顺序（直接取 ASSET_KIND_VALUES 单一来源，新增类型不会漏统计） */
 const KIND_ORDER: AssetKind[] = [...ASSET_KIND_VALUES];
 
-const EMPTY_STATS: AssetStats = {
-  total: 0,
-  last30dCount: 0,
-  prev30dCount: 0,
-  imageCount: 0,
-  kindCounts: KIND_ORDER.map((kind) => ({ kind, count: 0 })),
-  dailyTrend: buildDailyTrend([]),
-  recentAssets: []
-};
-
 interface DayBucketRow {
   /** SQL 端 to_char 产出的日历日 key（YYYY-MM-DD），不经 JS Date 解析，避免服务器时区干扰 */
   day: string;
@@ -41,14 +31,18 @@ interface DayBucketRow {
   total: string;
 }
 
-/** Asia/Shanghai 日历日 key（YYYY-MM-DD）；SQL date_trunc 与 JS 补零共用同一时区口径 */
+/** Asia/Shanghai 日历日 key（YYYY-MM-DD）；SQL date_trunc 与 JS 补零共用同一时区口径。
+ * formatter  locale/时区固定，构造一次模块级复用（每次 getTrendWindow 会调用 30+ 次）。
+ * 注意：EMPTY_STATS 在模块初始化时即调用 buildDailyTrend，本常量必须声明在其之前（TDZ） */
+const DAY_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TREND_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
 function formatDayKey(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TREND_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date);
+  return DAY_KEY_FORMATTER.format(date);
 }
 
 /**
@@ -90,6 +84,16 @@ function buildDailyTrend(rows: DayBucketRow[]): DailyAssetCount[] {
   }
   return dayKeys.map((key) => byDay.get(key) ?? { date: key, count: 0, generated: 0, imported: 0 });
 }
+
+const EMPTY_STATS: AssetStats = {
+  total: 0,
+  last30dCount: 0,
+  prev30dCount: 0,
+  imageCount: 0,
+  kindCounts: KIND_ORDER.map((kind) => ({ kind, count: 0 })),
+  dailyTrend: buildDailyTrend([]),
+  recentAssets: []
+};
 
 /**
  * 资产统计聚合：总数 / 近 30 天与上一个 30 天新增 / 类型分布 / 按天趋势 / 最近创作。
