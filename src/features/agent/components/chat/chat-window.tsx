@@ -48,8 +48,9 @@ interface ChatWindowProps {
 /**
  * 对话窗口（官方可恢复流模式）。
  *
- * 每个会话挂载时创建独立 Chat 实例；`resume: true` 会在挂载时自动 GET
- * /api/agent/chat/[id]/stream 重连进行中的流（刷新/切回会话均实时恢复）。
+ * 每个会话挂载时创建独立 Chat 实例；`resume` 按官方模式由服务端已知的
+ * activeStreamId 决定——仅当存在活跃流时才在挂载时 GET
+ * /api/agent/chat/[id]/stream 重连（刷新/切回会话均实时恢复）。
  * 断开只是断开，不会取消生成；停止按钮走专用 stop 端点（真取消）。
  */
 export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
@@ -70,7 +71,11 @@ export function ChatWindow({ conversation, initialMessages }: ChatWindowProps) {
   const { messages, sendMessage, status, stop, error, regenerate } = useChat({
     id: initialConversationId,
     messages: initialMessages,
-    resume: Boolean(initialConversationId),
+    // 官方恢复语义（Resume Streams 官方示例）：仅「服务端已知存在活跃流」才重连，
+    // 不对既有会话无条件重连——新会话「创建 → 导航 → 挂载即发送首条消息」时，
+    // 挂载重连 GET 的 204 分支（SDK 内部 setStatus('ready')）会把 sendMessage
+    // 刚置上的 'submitted' 改回 'ready'，发送按钮要等首个 chunk 才变「停止」。
+    resume: Boolean(conversation?.activeStreamId),
     transport: new DefaultChatTransport({
       api: '/api/agent/chat',
       body: () => ({ conversationId: conversationIdRef.current }),

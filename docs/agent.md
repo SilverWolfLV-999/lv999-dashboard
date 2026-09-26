@@ -117,7 +117,7 @@ Drizzle schema 定义于 [`src/lib/db/schema.ts`](../src/lib/db/schema.ts)，共
 
 - 生产者在无人订阅时把流写完整（`waitUntil(after)` 保活）。
 - 每开新流先生成 `streamId` 并**立即**登记到 `conversations.activeStreamId`（防止窗口期刷新重连到旧流或拿 204）。
-- 客户端 `useChat({ resume: true })` 在挂载时自动 `GET /api/agent/chat/[id]/stream` 重连进行中的流（刷新 / 切回实时恢复）。
+- 客户端 `useChat({ resume })` 按官方模式由服务端 `activeStreamId` 决定是否重连（仅存在活跃流时为 true）：有活跃流时挂载自动 `GET /api/agent/chat/[id]/stream` 重连（刷新 / 切回实时恢复）；无活跃流时不发重连请求（其 204 分支会把刚发送消息的 `submitted` 状态重置回 `ready`，导致发送按钮延迟变「停止」）。
 - `streamId` 随响应消息 `metadata` 下发，供客户端停止时携带最新流 id。
 - **必须提供 `generateMessageId`**：否则响应消息 id 为空串，会在 `messages` 主键上跨会话冲突（历史事故：串会话 + 消息丢失）。
 
